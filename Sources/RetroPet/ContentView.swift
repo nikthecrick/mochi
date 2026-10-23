@@ -217,8 +217,8 @@ struct PetRootView: View {
                 }
                 heartsOverlay(t: t)
                 poopsOverlay
-                if mood == .egg { eggTempOverlay } else { needPods(t: t) }
                 if mood == .egg && eggDetail { eggDetailCard }
+                if mood != .egg && !engine.model.dead { needPods(t: t) }
                 if dropHot { feedMeHint }
                 let showControls = engine.controlsPinned
                     || (showMode == "ear" ? engine.earOpen : engine.hover)
@@ -244,6 +244,8 @@ struct PetRootView: View {
             PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides)
                 .shadow(color: .black.opacity(0.3), radius: 4, y: 3)
             earGlow(frame: frame, t: t)
+            // retro temp display, painted directly on the egg shell
+            if mood == .egg || mood == .hatch { eggTempOverlay(frame: frame) }
         }
         .scaleEffect(x: stretchX(t: t), y: stretchY(t: t))
         .offset(x: wobbleX(mood: mood, t: t),
@@ -352,35 +354,32 @@ struct PetRootView: View {
             .blur(radius: 7)
     }
 
-    // Incubation: the temperature is painted DIRECTLY ON the egg shell as a
-    // retro pixel readout (capsule plate + thermometer + Press Start digits).
-    // Click it for the details card. Warm mac -> fast hatch (engine handles it).
-    private var eggTempOverlay: some View {
-        let t = engine.eggTemp
-        let color: Color = t < 32 ? .cyan : (t < 48 ? Color(red: 0.6, green: 0.9, blue: 1) : (t < 62 ? .yellow : Color(red: 1, green: 0.45, blue: 0.35)))
-        return ZStack {
-            // retro capsule plate, glued over the shell
-            Capsule()
-                .fill(Color.black.opacity(0.5))
-                .frame(width: max(26, CGFloat(engine.ageScale()) * 5), height: max(12, CGFloat(engine.ageScale()) * 2.1))
-                .overlay(Capsule().stroke(color.opacity(0.75), lineWidth: max(1, CGFloat(engine.ageScale()) * 0.35)))
-            VStack(spacing: 0) {
-                // tiny pixel thermometer
-                HStack(spacing: 1) {
-                    Image(systemName: "thermometer.medium")
-                        .font(.system(size: max(7, CGFloat(engine.ageScale()) * 0.85), weight: .bold))
-                        .foregroundColor(color)
-                    Text("\(Int(t.rounded()))°")
-                        .font(PixelFont.font(CGFloat(max(6, Int(CGFloat(engine.ageScale()) * 1.0)))))
-                        .foregroundColor(color)
-                }
-                .shadow(color: .black.opacity(0.8), radius: 1, y: 1)
+    // Incubation: temperature painted directly on the egg shell.
+    // `frame` lets it sit over the shell; inherits the pet's wobble/bob.
+    @ViewBuilder
+    private func eggTempOverlay(frame: Frame) -> some View {
+        let color: Color = engine.eggTemp >= 62 ? .yellow : (engine.eggTemp >= 48 ? Color(red: 1, green: 0.85, blue: 0.45) : .white)
+        let plateW = max(28.0, scale * 5.0)
+        let plateH = max(13.0, scale * 2.2)
+        let icon = max(7.0, scale * 0.9)
+        ZStack {
+            Capsule().fill(Color.black.opacity(0.5))
+                .frame(width: plateW, height: plateH)
+                .overlay(Capsule().stroke(color.opacity(0.75), lineWidth: max(1, scale * 0.35)))
+            HStack(spacing: 1) {
+                Image(systemName: "thermometer.medium")
+                    .font(.system(size: icon, weight: .bold))
+                    .foregroundColor(color)
+                Text("\(Int(engine.eggTemp.rounded()))°")
+                    .font(PixelFont.font(max(6.0, scale)))
+                    .foregroundColor(color)
+                    .shadow(color: .black.opacity(0.8), radius: 1, y: 1)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .padding(.top, CGFloat(engine.ageScale()) * 2.6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)   // sit over the shell
+        .offset(y: -scale * 1.9)       // right over the shell's mid-section
         .onTapGesture { eggDetail.toggle() }
-        .help("incubator · click for details")
+        .help(" incubator · click for details")
     }
 
     // The details: nice glass card above the egg.
