@@ -259,7 +259,9 @@ struct PetRootView: View {
                 },
                 onRelease: { moved in
                     engine.dragged = false
-                    if moved { settle() } else { engine.pat() }
+                    if moved { settle() }
+                    else if mood == .egg { eggDetail.toggle() }   // click anywhere on the egg -> details
+                    else { engine.pat() }
                 },
                 onRightClick: { popMenu() },
                 activateOnClick: mood == .egg
@@ -378,8 +380,7 @@ struct PetRootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)   // sit over the shell
         .offset(y: -scale * 1.9)       // right over the shell's mid-section
-        .onTapGesture { eggDetail.toggle() }
-        .help(" incubator · click for details")
+        // click handled by the egg's DragArea (whole-egg)
     }
 
     // The details: nice glass card above the egg.
