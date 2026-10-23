@@ -195,7 +195,7 @@ struct PetRootView: View {
     }
 
     /// Sprite size grows with age (starts small, tops out after ~a day).
-    private var scale: CGFloat { CGFloat(engine.ageScale()) }
+    private var scale: CGFloat { CGFloat(engine.ageScale()) * (engine.mood == .egg ? 1.5 : 1.0) }
 
     private func content(t: Double) -> some View {
         let mood = engine.mood
@@ -217,7 +217,7 @@ struct PetRootView: View {
                 }
                 heartsOverlay(t: t)
                 poopsOverlay
-                if mood == .egg { eggBadge } else { needPods(t: t) }
+                if mood == .egg { eggTempOverlay } else { needPods(t: t) }
                 if mood == .egg && eggDetail { eggDetailCard }
                 if dropHot { feedMeHint }
                 let showControls = engine.controlsPinned
@@ -352,27 +352,34 @@ struct PetRootView: View {
             .blur(radius: 7)
     }
 
-    // Incubation: a tiny temp display stuck on the egg shell.
-    // Click it for the details card.
-    private var eggBadge: some View {
-        Button { eggDetail.toggle() } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "thermometer.medium")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(engine.eggTemp >= 62 ? .yellow : .white)
-                Text("\(Int(engine.eggTemp.rounded()))°")
-                    .font(PixelFont.font(6))
-                    .foregroundColor(engine.eggTemp >= 62 ? .yellow : .white)
-                    .shadow(color: .black.opacity(0.7), radius: 1, y: 1)
+    // Incubation: the temperature is painted DIRECTLY ON the egg shell as a
+    // retro pixel readout (capsule plate + thermometer + Press Start digits).
+    // Click it for the details card. Warm mac -> fast hatch (engine handles it).
+    private var eggTempOverlay: some View {
+        let t = engine.eggTemp
+        let color: Color = t < 32 ? .cyan : (t < 48 ? Color(red: 0.6, green: 0.9, blue: 1) : (t < 62 ? .yellow : Color(red: 1, green: 0.45, blue: 0.35)))
+        return ZStack {
+            // retro capsule plate, glued over the shell
+            Capsule()
+                .fill(Color.black.opacity(0.5))
+                .frame(width: max(26, CGFloat(engine.ageScale()) * 5), height: max(12, CGFloat(engine.ageScale()) * 2.1))
+                .overlay(Capsule().stroke(color.opacity(0.75), lineWidth: max(1, CGFloat(engine.ageScale()) * 0.35)))
+            VStack(spacing: 0) {
+                // tiny pixel thermometer
+                HStack(spacing: 1) {
+                    Image(systemName: "thermometer.medium")
+                        .font(.system(size: max(7, CGFloat(engine.ageScale()) * 0.85), weight: .bold))
+                        .foregroundColor(color)
+                    Text("\(Int(t.rounded()))°")
+                        .font(PixelFont.font(CGFloat(max(6, Int(CGFloat(engine.ageScale()) * 1.0)))))
+                        .foregroundColor(color)
+                }
+                .shadow(color: .black.opacity(0.8), radius: 1, y: 1)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(.ultraThinMaterial))
-            .overlay(Capsule().stroke(Color.white.opacity(0.25)))
-            .shadow(color: .black.opacity(0.2), radius: 2, y: 1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .buttonStyle(.plain)
-        .offset(x: 24, y: 30)   // stuck on the lower-right of the shell
+        .padding(.top, CGFloat(engine.ageScale()) * 2.6)
+        .onTapGesture { eggDetail.toggle() }
         .help("incubator · click for details")
     }
 

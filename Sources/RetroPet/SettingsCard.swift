@@ -17,7 +17,7 @@ struct SettingsCard: View {
 
     @AppStorage(PetRates.digestDefaultsKey) private var digest: Double = 300
     @AppStorage(PetRates.walkChanceDefaultsKey) private var walkChance: Double = PetRates.defaultWalkChance
-    @AppStorage("RetroPet.showMode") private var showMode = "hover"   // hover | ear
+    @AppStorage("RetroPet.showMode") private var showMode = "ear"   // hover | ear
 
     private let w: CGFloat = 248
 
