@@ -1,6 +1,7 @@
 # build artifacts
 .build/
 RetroPet.app/
+Mochi.app/
 *.o
 *.swiftmodule
 

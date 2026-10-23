@@ -54,7 +54,7 @@ enum Dialogs {
         guard p.runModal() == .OK, let url = p.url else { return }
         do {
             try BorrowManager.export(engine.model, to: url)
-            print("RetroPet: lent \(engine.model.name) -> \(url.path)")
+            print("Mochi: lent \(engine.model.name) -> \(url.path)")
         } catch { fail(error) }
     }
 

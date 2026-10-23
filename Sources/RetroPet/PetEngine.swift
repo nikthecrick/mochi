@@ -234,7 +234,7 @@ final class PetEngine: ObservableObject {
         lastScaleMark = s
         growBounceUntil = now.addingTimeInterval(1.6)
         spawn(.sparkle, 5)
-        print(String(format: "RetroPet: %@ is growing! (size %.2f)", model.name, s))
+        print(String(format: "Mochi: %@ is growing! (size %.2f)", model.name, s))
         sound?.play(.hatch)
     }
 
@@ -368,7 +368,7 @@ final class PetEngine: ObservableObject {
         walkToPool = false
         swimUntil = now.addingTimeInterval(Double.random(in: 7...14))
         model.happiness = min(100, model.happiness + 8)
-        print("RetroPet: \(model.name) is taking a dip in the pool")
+        print("Mochi: \(model.name) is taking a dip in the pool")
         sound?.play(.sleep)   // whoosh: dive
         save()
     }
@@ -376,7 +376,7 @@ final class PetEngine: ObservableObject {
     private func advanceSwim() {
         guard let until = swimUntil, now >= until, !swimActive else { return }
         swimUntil = nil
-        print("RetroPet: \(model.name) got out of the pool, refreshed")
+        print("Mochi: \(model.name) got out of the pool, refreshed")
         sound?.play(.wake)
         spawn(.sparkle, 3)
         // walk away from the edge a little, then carry on as usual
@@ -411,7 +411,7 @@ final class PetEngine: ObservableObject {
         model.hatchedAt = now
         spawn(.sparkle, 6)
         sound?.play(.hatch)
-        print("RetroPet: the egg cracks open — \(model.name) the \(breed.name) is here!")
+        print("Mochi: the egg cracks open — \(model.name) the \(breed.name) is here!")
         save()
     }
 
@@ -476,7 +476,7 @@ final class PetEngine: ObservableObject {
         if (model.lastEaten ?? []).count > 12 { model.lastEaten?.removeFirst() }
 
         let mbText = mb >= 1 ? String(format: "%.1f MB", mb) : "\(max(1, Int(bytes / 1024))) KB"
-        print("RetroPet: nom nom — ate \(url.lastPathComponent) (\(mbText), meal quality \(quality))")
+        print("Mochi: nom nom — ate \(url.lastPathComponent) (\(mbText), meal quality \(quality))")
         sound?.play(.feed)
 
         evolve()
@@ -492,19 +492,19 @@ final class PetEngine: ObservableObject {
             model.legsGrown = true
             legsUntil = now.addingTimeInterval(3.5)   // celebrate with a trot
             spawn(.sparkle, 6)
-            print("RetroPet: \(model.name) grew legs!")
+            print("Mochi: \(model.name) grew legs!")
             sound?.play(.hatch)
         } else if !hasArms && model.filesEaten >= PetRates.mealsUntilArms {
             model.armsGrown = true
             legsUntil = now.addingTimeInterval(3.5)
             spawn(.sparkle, 8)
-            print("RetroPet: \(model.name) grew little arms!")
+            print("Mochi: \(model.name) grew little arms!")
             sound?.play(.hatch)
         } else if !hasGadget && model.filesEaten >= PetRates.mealsUntilGadget {
             model.gadget = true
             legsUntil = now.addingTimeInterval(3.5)
             spawn(.sparkle, 10)
-            print("RetroPet: \(model.name) got a gadget - cool shades! (and can now own a pool)")
+            print("Mochi: \(model.name) got a gadget - cool shades! (and can now own a pool)")
             sound?.play(.hatch)
         } else {
             spawn(.heart, 2)
@@ -562,7 +562,7 @@ final class PetEngine: ObservableObject {
         poopUntil = now.addingTimeInterval(2.2)   // squeeze...
         pileUntil = now.addingTimeInterval(4.4)    // ...pile shows briefly, then restore
         model.happiness = min(100, model.happiness + 3)   // relief
-        print("RetroPet: ...\(model.name) is pushing one out")
+        print("Mochi: ...\(model.name) is pushing one out")
         save()
     }
 
@@ -588,7 +588,7 @@ final class PetEngine: ObservableObject {
         glowUntil = now.addingTimeInterval(2.5)   // little glow: nice tab
         spawn(.heart, 2)
         evolve()
-        print("RetroPet: nom nom — ate the \(browser) tab '\(title)'")
+        print("Mochi: nom nom — ate the \(browser) tab '\(title)'")
         sound?.play(.feed)
         save()
     }
@@ -631,9 +631,9 @@ final class PetEngine: ObservableObject {
             do {
                 try xml.data(using: .utf8)?.write(to: dest, options: .atomic)
                 restored = true
-                print("RetroPet: poop! — restored the tab as a link -> \(dest.path)")
+                print("Mochi: poop! — restored the tab as a link -> \(dest.path)")
             } catch {
-                print("RetroPet: couldn't write \(dest.lastPathComponent): \(error)")
+                print("Mochi: couldn't write \(dest.lastPathComponent): \(error)")
             }
         } else {
             let trashURL = FileManager.default.homeDirectoryForCurrentUser
@@ -646,12 +646,12 @@ final class PetEngine: ObservableObject {
                 do {
                     try FileManager.default.moveItem(at: trashURL, to: dest)
                     restored = true
-                    print("RetroPet: poop! — restored \(pile.fileName) -> \(dest.path)")
+                    print("Mochi: poop! — restored \(pile.fileName) -> \(dest.path)")
                 } catch {
-                    print("RetroPet: couldn't restore \(pile.fileName): \(error)")
+                    print("Mochi: couldn't restore \(pile.fileName): \(error)")
                 }
             } else {
-                print("RetroPet: \(pile.fileName) isn't in the Trash anymore (already gone?)")
+                print("Mochi: \(pile.fileName) isn't in the Trash anymore (already gone?)")
             }
         }
         spawn(.sparkle, 3)
@@ -671,7 +671,7 @@ final class PetEngine: ObservableObject {
         model.hunger = max(0, model.hunger - 4)
         model.chub = max(0, chubValue - 10)   // playing it off
         if wasChubby && chubValue <= 60 {
-            print("RetroPet: \(model.name) burned off the extra chub — good exercise!")
+            print("Mochi: \(model.name) burned off the extra chub — good exercise!")
         }
         happyUntil = now.addingTimeInterval(1.6)
         spawn(.heart, 3)

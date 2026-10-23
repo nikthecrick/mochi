@@ -1,7 +1,7 @@
 import Foundation
 import AppKit
 
-// RetroPet — a tiny desktop tamagotchi.
+// Mochi — a tiny desktop tamagotchi.
 // Flags: --smoke (headless self-test), --dump-sprites (ASCII sprite preview),
 //        --make-icon <out.png> [size], --dev (enables prepared/experimental menu).
 

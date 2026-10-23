@@ -2,9 +2,9 @@
 import PackageDescription
 
 let package = Package(
-    name: "RetroPet",
+    name: "Mochi",
     platforms: [.macOS(.v13)],
     targets: [
-        .executableTarget(name: "RetroPet", path: "Sources/RetroPet")
+        .executableTarget(name: "Mochi", path: "Sources/RetroPet")
     ]
 )

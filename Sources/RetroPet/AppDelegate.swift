@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Don't let App Nap pause the pet's heartbeat.
         activity = ProcessInfo.processInfo.beginActivity(
             options: [.userInitiatedAllowingIdleSystemSleep],
-            reason: "RetroPet keeps ticking so the pet ages in real time")
+            reason: "Mochi keeps ticking so the pet ages in real time")
     }
 
     private func defaultWindowFrame() -> NSRect {
@@ -93,6 +93,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var o = p.frame.origin
         o.x += dx
         o.y += dy
+        // Soft safety: no constraint at the top (the pet may reach the very
+        // top edge), but keep a grabbable strip of the window on-screen so
+        // the pet can never be dragged completely out of reach.
+        if let vis = NSScreen.main?.visibleFrame {
+            o.x = min(max(o.x, vis.minX - 200), vis.maxX - 80)
+            o.y = max(o.y, vis.minY - 60)
+        }
         p.setFrameOrigin(o)
         engine.petPos = centre(of: p.frame)
     }
@@ -210,7 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.model.poolOwned = true
         engine.petPos = centre(of: panel?.frame ?? .zero)
         engine.save()
-        if !restore { print("RetroPet: pool placed — drag it anywhere; the pet will find it") }
+        if !restore { print("Mochi: pool placed — drag it anywhere; the pet will find it") }
     }
 
     private func poolFrame(size: NSSize) -> NSRect {
@@ -261,7 +268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         poolPanel = nil
         engine.model.poolOwned = false
         engine.save()
-        print("RetroPet: pool removed")
+        print("Mochi: pool removed")
     }
 
     /// Clean the toilet = empty the Trash (the pet refills it as it eats).
@@ -271,9 +278,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         script?.executeAndReturnError(&err)
         if err == nil {
             sound.play(.poop)
-            print("RetroPet: toilet flushed — Trash emptied")
+            print("Mochi: toilet flushed — Trash emptied")
         } else {
-            print("RetroPet: emptying the Trash failed: \(String(describing: err))")
+            print("Mochi: emptying the Trash failed: \(String(describing: err))")
             Dialogs.fail(NSError(domain: "RetroPet", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Couldn't empty the Trash (allow Finder automation when asked, or empty it manually)."
             ]))
@@ -284,9 +291,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func trashFile(_ url: URL) {
         NSWorkspace.shared.recycle([url]) { trashed, error in
             if let error = error {
-                print("RetroPet: couldn't trash \(url.lastPathComponent): \(error)")
+                print("Mochi: couldn't trash \(url.lastPathComponent): \(error)")
             } else {
-                print("RetroPet: \(url.lastPathComponent) -> Trash")
+                print("Mochi: \(url.lastPathComponent) -> Trash")
             }
         }
     }

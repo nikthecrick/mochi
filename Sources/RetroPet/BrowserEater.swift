@@ -83,7 +83,7 @@ enum BrowserEater {
             """
             let (text, error) = run(src)
             if let error = error {
-                print("RetroPet: closing a \(name) tab failed: \(error)")
+                print("Mochi: closing a \(name) tab failed: \(error)")
                 continue
             }
             let title = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)

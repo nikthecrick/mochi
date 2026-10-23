@@ -36,7 +36,7 @@ enum BorrowManager {
         let snapshot = try JSONDecoder().decode(PetSnapshot.self, from: data)
         guard snapshot.format == PetSnapshot.formatID else {
             throw NSError(domain: "RetroPet", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "Not a RetroPet snapshot (\(snapshot.format))"])
+                          userInfo: [NSLocalizedDescriptionKey: "Not a Mochi pet snapshot (\(snapshot.format))"])
         }
         var pet = snapshot.pet
         pet.borrowedFrom = snapshot.owner

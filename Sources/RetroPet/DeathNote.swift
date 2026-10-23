@@ -44,7 +44,7 @@ enum DeathNote {
                        -- RetroPet
 
           ________________________________
-          This note was left by RetroPet on
+          This note was left by Mochi on
           \(Date().formatted(date: .long, time: .shortened)).
           """
     }
@@ -63,7 +63,7 @@ enum DeathNote {
         } else {
             png = nil
         }
-        print("RetroPet: death note written: \(txtURL.path)" + (png != nil ? " + tombstone.png" : ""))
+        print("Mochi: death note written: \(txtURL.path)" + (png != nil ? " + tombstone.png" : ""))
         return (txtURL, png)
     }
 }
@@ -83,12 +83,12 @@ enum GrimReaper {
         guard selfDestructEnabled else { return }
         let url = Bundle.main.bundleURL
         guard url.pathExtension == "app" else {
-            print("RetroPet: cleanup deferred — not running from a .app bundle.")
+            print("Mochi: cleanup deferred — not running from a .app bundle.")
             return
         }
-        print("RetroPet: moving the app bundle to Trash (\(url.path))")
+        print("Mochi: moving the app bundle to Trash (\(url.path))")
         NSWorkspace.shared.recycle([url]) { _, error in
-            if let error = error { print("RetroPet: recycle failed: \(error)") }
+            if let error = error { print("Mochi: recycle failed: \(error)") }
         }
     }
 }

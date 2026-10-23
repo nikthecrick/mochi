@@ -1,6 +1,6 @@
-# RetroPet
+# Mochi
 
-A tiny tamagotchi that lives on your macOS desktop — retro pixel pet on the
+A tiny tamagotchi (formerly RetroPet) that lives on your macOS desktop — retro pixel pet on the
 outside, modern glass UI on the inside. Universal binary (Intel + Apple Silicon).
 
 ## What it does
@@ -26,16 +26,16 @@ outside, modern glass UI on the inside. Universal binary (Intel + Apple Silicon)
 ## Build & run
 
 ```sh
-./scripts/build.sh      # universal arm64 + x86_64 -> RetroPet.app
+./scripts/build.sh      # universal arm64 + x86_64 -> Mochi.app
 open RetroPet.app
 ```
 
 Dev helpers (no bundle needed):
 
 ```sh
-swift run RetroPet --smoke         # headless self-test
-swift run RetroPet --dump-sprites  # ASCII preview of every sprite
-swift run RetroPet --dev           # app with Dev menu (prepared features)
+swift run Mochi --smoke         # headless self-test
+swift run Mochi --dump-sprites  # ASCII preview of every sprite
+swift run Mochi --dev           # app with Dev menu (prepared features)
 ```
 
 ## Controls
@@ -63,4 +63,4 @@ swift run RetroPet --dev           # app with Dev menu (prepared features)
   `defaults write dev.tryouts.retpet.RetroPet RetroPet.selfDestruct -bool YES`
   (moves the `.app` bundle to the Trash on death, after leaving the note).
 
-State lives in `~/Library/Application Support/RetroPet/pet.json`.
+State lives in `~/Library/Application Support/Mochi/pet.json` (migrated from the old `RetroPet` location).
