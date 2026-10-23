@@ -17,6 +17,7 @@ struct SettingsCard: View {
 
     @AppStorage(PetRates.digestDefaultsKey) private var digest: Double = 300
     @AppStorage(PetRates.walkChanceDefaultsKey) private var walkChance: Double = PetRates.defaultWalkChance
+    @AppStorage("RetroPet.showMode") private var showMode = "hover"   // hover | ear
 
     private let w: CGFloat = 248
 
@@ -35,6 +36,16 @@ struct SettingsCard: View {
                 switcher("Sound effects", isOn: Binding(
                     get: { !sound.muted }, set: { sound.muted = !$0 }))
                 switcher("Pin controls", isOn: $engine.controlsPinned)
+            }
+
+            section("CONTROLS APPEAR") {
+                pillStrings([("On hover", "hover"), ("On left ear", "ear")], $showMode)
+                if showMode == "ear" {
+                    Text("click the pet's left ear to show / hide the controls")
+                        .font(.system(size: 8))
+                        .foregroundColor(.white.opacity(0.5))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
 
             section("POOP TIMING") {
@@ -187,6 +198,26 @@ struct SettingsCard: View {
         HStack(spacing: 4) {
             ForEach(Array(options.enumerated()), id: \.offset) { pair in
                 let on = abs(value.wrappedValue - pair.element.1) < 0.000001
+                Button {
+                    value.wrappedValue = pair.element.1
+                } label: {
+                    Text(pair.element.0)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(on ? .black : .white.opacity(0.8))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule().fill(on ? Color.white : Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func pillStrings(_ options: [(String, String)], _ value: Binding<String>) -> some View {
+        HStack(spacing: 4) {
+            ForEach(Array(options.enumerated()), id: \.offset) { pair in
+                let on = value.wrappedValue == pair.element.1
                 Button {
                     value.wrappedValue = pair.element.1
                 } label: {
