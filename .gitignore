@@ -1,0 +1,14 @@
+# build artifacts
+.build/
+RetroPet.app/
+*.o
+*.swiftmodule
+
+# macOS
+.DS_Store
+
+# SwiftPM / Xcode noise
+*.xcodeproj
+*.xcodeproj.xcarchive
+.swiftpm/
+Package.resolved
