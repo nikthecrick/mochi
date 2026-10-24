@@ -60,6 +60,8 @@ enum Frame: String, CaseIterable {
     case stand2A, stand2B, wave2, cool2
     case walkLegs2A, walkLegs2B, dangle2A, dangle2B
     case swimA, swimB, pool
+    // Play tricks:
+    case spinA, spinB, saltoA, saltoB, zoomA, zoomB
 }
 
 enum Sprites {
@@ -457,6 +459,31 @@ enum Sprites {
             b.rect(5, 7, 2, 1, "W")
             b.rect(9, 7, 2, 1, "W")
             b.rect(7, 7, 2, 2, "Y")
+        case .spinA:   // play: spin (dizzy squint)
+            body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
+            eyes(b, open: false)
+            smile(b)
+        case .spinB:
+            body(b, skin: "B", earL: 5, earR: 9, belly: true, blush: true, feet: "S")
+            eyes(b, open: true)
+            smile(b)
+        case .saltoA:   // play: salto (arms flail, mid-flight mouth)
+            body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
+            eyes(b, open: true)
+            b.rect(7, 9, 2, 1, "K")
+            b.p(6, 10, "K"); b.p(9, 10, "K")
+        case .saltoB:
+            body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
+            eyes(b, open: true, look: 1)
+            smile(b)
+        case .zoomA:   // play: zoom (big confident stretch)
+            body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
+            eyes(b, open: true)
+            smile(b)
+        case .zoomB:
+            body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
+            eyes(b, open: false)
+            smile(b)
         }
         return b.finish()
     }

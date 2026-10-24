@@ -4,6 +4,18 @@ import SwiftUI
 
 enum Mood { case egg, hatch, happy, neutral, sad, asleep, dead }
 
+/// The four tricks the play menu offers. Each one animates the pet differently.
+enum PlayMode: String, CaseIterable, Codable {
+    case toss = "Toss"
+    case spin = "Spin"
+    case salto = "Salto"
+    case zoom = "Zoom"
+    var icon: String {
+        switch self { case .toss: return "dice"; case .spin: return "arrow.heartcircle"
+        case .salto: return "figure.archery"; case .zoom: return "magnifyingglass" }
+    }
+}
+
 struct PoopRecord: Codable, Identifiable {
     let id = UUID()
     let fileName: String
@@ -65,6 +77,7 @@ enum PetRates {
     static let walkSpeedMin = 9.0        // px/s on screen
     static let walkSpeedMax = 16.0
     static let jumpSeconds = 0.9
+    static let playDuration = 1.6     // how long a trick plays out
     static let jumpChance = 0.00007     // rare happy hops (avg every ~25 min)
     static let defaultWalkChance = 0.00085   // setting default (avg every ~20 min)
     /// Age -> sprite size (piecewise linear; hours, sprite px per cell).
@@ -111,6 +124,9 @@ final class PetEngine: ObservableObject {
     var sniffUntil: Date?
     // Rare little hops (new: jump).
     @Published var jumpUntil: Date?
+    // Play: a trick from the play menu (toss / spin / salto / zoom).
+    @Published var playMode: PlayMode = .toss
+    @Published var playUntil: Date?
     // Growing: size follows age; a springy bounce plays at milestones.
     @Published var growBounceUntil: Date?
     private var lastScaleMark = -1.0
@@ -177,6 +193,13 @@ final class PetEngine: ObservableObject {
     var jumpActive: Bool { jumpUntil.map { now < $0 } ?? false }
     var swimActive: Bool { swimUntil.map { now < $0 } ?? false }
     var growBounceActive: Bool { growBounceUntil.map { now < $0 } ?? false }
+    var playActive: Bool { playUntil.map { now < $0 } ?? false }
+    /// 0..1 progress of the current trick.
+    var playPhase: Double {
+        guard let u = playUntil else { return 0 }
+        let remaining = u.timeIntervalSince(now)
+        return max(0, min(1, 1 - remaining / PetRates.playDuration))
+    }
 
     /// Chubbiness 0...100 (nil -> slim default).
     var chubValue: Double { min(100, max(0, model.chub ?? 0)) }
@@ -221,6 +244,7 @@ final class PetEngine: ObservableObject {
         maybeWalk()
         maybeJump()
         maybePoop()
+        maybePlay()
         pruneParticles()
         autoSave()
     }
@@ -660,9 +684,19 @@ final class PetEngine: ObservableObject {
         return restored
     }
 
+    /// Occasionally does a random trick when idle and happy.
+    func maybePlay(probability: Double = 0.0001) {
+        guard !model.dead, model.everHatched, !model.asleep,
+              !playActive, !jumpActive, !poopActive, !isWalking,
+              Double.random(in: 0..<1) < probability else { return }
+        play(PlayMode.allCases.randomElement()!)
+        sound?.play(.play)
+        print("Mochi: \(model.name) plays a trick spontaneously")
+    }
+
     // MARK: more actions
 
-    func play() {
+    func play(_ mode: PlayMode) {
         guard !model.dead, model.everHatched else { return }
         if model.asleep { return }
         let wasChubby = chubValue > 60
@@ -673,10 +707,19 @@ final class PetEngine: ObservableObject {
         if wasChubby && chubValue <= 60 {
             print("Mochi: \(model.name) burned off the extra chub — good exercise!")
         }
-        happyUntil = now.addingTimeInterval(1.6)
+        playMode = mode
+        playUntil = now.addingTimeInterval(PetRates.playDuration)
         spawn(.heart, 3)
+        spawn(.sparkle, mode == .toss ? 2 : 4)
         sound?.play(.play)
         save()
+    }
+
+    /// Random trick, for the occasional autonomous play session.
+    func playTrick() {
+        guard !model.dead, model.everHatched, !model.asleep,
+              !playActive, !jumpActive, !poopActive, !isWalking else { return }
+        play(PlayMode.allCases.randomElement()!)
     }
 
     func pat() {

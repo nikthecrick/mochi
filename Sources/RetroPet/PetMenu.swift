@@ -84,7 +84,7 @@ enum PetMenu {
         walkParent.submenu = walkMenu
 
         menu.addItem(item("Feed a snack") { engine.feed() })
-        menu.addItem(item("Play") { engine.play() })
+        menu.addItem(item("Play") { engine.play(.toss) })
         menu.addItem(item(engine.model.asleep ? "Wake up" : "Sleep") { engine.toggleSleep() })
         menu.addItem(.separator())
         menu.addItem(toggle("Ambient music", isOn: sound.musicOn) { sound.musicOn.toggle() })

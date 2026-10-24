@@ -169,7 +169,40 @@ struct PetRootView: View {
     @State private var dropHot = false
     @State private var lastT: Double = 0
     @State private var eggDetail = false   // click the egg's temp badge -> details
+    @State private var showPlayMenu = false   // play menu: toss / spin / salto / zoom
     @AppStorage("RetroPet.showMode") private var showMode = "hover"   // hover | ear
+
+    // MARK: - Play Menu (2×2 grid of trick buttons)
+    private var playMenu: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 20) {
+                PlayMenuButton(mode: .toss, isSelected: engine.playMode == .toss) {
+                    engine.play(.toss)
+                    showPlayMenu = false
+                }
+                PlayMenuButton(mode: .spin, isSelected: engine.playMode == .spin) {
+                    engine.play(.spin)
+                    showPlayMenu = false
+                }
+            }
+            HStack(spacing: 20) {
+                PlayMenuButton(mode: .salto, isSelected: engine.playMode == .salto) {
+                    engine.play(.salto)
+                    showPlayMenu = false
+                }
+                PlayMenuButton(mode: .zoom, isSelected: engine.playMode == .zoom) {
+                    engine.play(.zoom)
+                    showPlayMenu = false
+                }
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.2)))
+        .fixedSize()
+    }
+
+    private func onPlay() { showPlayMenu.toggle() }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.1)) { tl in
@@ -225,11 +258,16 @@ struct PetRootView: View {
                 if showControls {
                     VStack {
                         Spacer()
-                        ControlsBar(engine: engine, sound: sound, onSettings: popMenu)
+                        ControlsBar(engine: engine, sound: sound, onSettings: popMenu, onPlay: onPlay)
                             .padding(.bottom, 6)
                     }
                     .padding(.horizontal, 10)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+                if showPlayMenu {
+                    playMenu
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .position(x: 140, y: 120)
                 }
             }
         }
@@ -305,6 +343,7 @@ struct PetRootView: View {
             dropHot = false
             return ate
         } isTargeted: { _ in }
+        .modifier(PetPlayModifier(engine: engine))
     }
 
     /// Dropped a file -> eat it (trashed). Dropped a browser tab / link ->
@@ -531,6 +570,16 @@ struct PetRootView: View {
                 ? (fast ? .walkLegs2A : .walkLegs2B)
                 : (fast ? .walkLegsA : .walkLegsB)
         }
+        // Play tricks override mood frames
+        if engine.playActive && mood != .dead && mood != .egg && mood != .hatch {
+            let p = Int(t * 12) % 2
+            switch engine.playMode {
+            case .toss:  return p == 0 ? .happyA : .happyB
+            case .spin:  return p == 0 ? .spinA : .spinB
+            case .salto: return p == 0 ? .saltoA : .saltoB
+            case .zoom:  return p == 0 ? .zoomA : .zoomB
+            }
+        }
         switch mood {
         case .egg: return engine.eggProgressValue > PetRates.eggSeconds - 60 ? .eggCrack : .egg
         case .hatch: return .happyA
@@ -637,11 +686,12 @@ struct ControlsBar: View {
     let engine: PetEngine
     let sound: SoundBank
     var onSettings: () -> Void = {}
+    var onPlay: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 5) {
             ctl("carrot.fill", color: .orange, tip: "Feed a snack") { engine.feed() }
-            ctl("gamecontroller.fill", color: .pink, tip: "Play") { engine.play() }
+            ctl("gamecontroller.fill", color: .pink, tip: "Play") { onPlay() }
             ctl("zzz", color: .indigo, tip: engine.model.asleep ? "Wake up" : "Sleep") { engine.toggleSleep() }
             Divider()
                 .frame(height: 16)
@@ -678,6 +728,28 @@ struct IconButtonStyle: ButtonStyle {
     }
 }
 
+// MARK: - Play Menu Buttons
+struct PlayMenuButton: View {
+    let mode: PlayMode
+    let isSelected: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Image(systemName: mode.icon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(isSelected ? .white : .white.opacity(0.6))
+                Text(mode.rawValue)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(isSelected ? .white : .white.opacity(0.6))
+            }
+        }
+        .padding(8)
+        .background(Capsule().fill(isSelected ? Color.white : Color.white.opacity(0.08)))
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Pool (gadget stage: a little pixel pond you can park anywhere)
 
 struct PoolRootView: View {
@@ -704,6 +776,28 @@ struct PoolRootView: View {
                 )
             )
         }
+    }
+}
+
+// MARK: - Play animation (toss / spin / salto / zoom)
+struct PetPlayModifier: ViewModifier {
+    let engine: PetEngine
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        let phase = engine.playPhase
+        if engine.playActive, engine.playMode == .toss {
+            content
+                .scaleEffect(1 + 0.12 * CGFloat(sin(.pi * phase)))
+                .offset(y: -8 * CGFloat(sin(.pi * phase)))
+        } else if engine.playActive, engine.playMode == .spin {
+            content.rotationEffect(.radians(.pi * 2.5 * phase))
+        } else if engine.playActive, engine.playMode == .salto {
+            content
+                .rotationEffect(.radians(.pi * 2 * phase))
+                .offset(y: -16 * CGFloat(sin(.pi * phase)))
+        } else if engine.playActive, engine.playMode == .zoom {
+            content.scaleEffect(1.25)
+        } else { content }
     }
 }
 

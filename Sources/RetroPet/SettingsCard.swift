@@ -27,7 +27,7 @@ struct SettingsCard: View {
 
             section("CARE") {
                 row("carrot.fill", "Feed a snack", color: .orange) { engine.feed() }
-                row("gamecontroller.fill", "Play", color: .pink) { engine.play() }
+                row("gamecontroller.fill", "Play", color: .pink) { engine.play(.toss) }
                 row("zzz", engine.model.asleep ? "Wake up" : "Sleep", color: .indigo) { engine.toggleSleep() }
             }
 
