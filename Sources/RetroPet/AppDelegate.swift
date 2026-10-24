@@ -155,7 +155,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Dialogs.borrow(self?.engine ?? PetEngine())
             } : nil,
             onPlay: { [weak self] in
-                self?.settingsPanel?.orderOut(nil)
                 self?.showPlayMenu()
             }
         ))
@@ -198,10 +197,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func placePlayMenu(_ p: PetPanel) {
-        let anchor: NSRect = settingsPanel?.isVisible == true
-            ? (settingsPanel?.frame ?? panel?.frame ?? .zero)
-            : (panel?.frame ?? .zero)
-        let size = NSSize(width: 168, height: 108)
+        guard let pet = panel,
+              let hosting = p.contentView as? NSHostingView<PlayMenuPanel> else { return }
+        hosting.invalidateIntrinsicContentSize()
+        let size = hosting.fittingSize.width > 10 ? hosting.fittingSize : NSSize(width: 168, height: 108)
+        // Anchor below the settings panel when it exists, otherwise below the pet
+        let anchor: NSRect = settingsPanel?.frame ?? pet.frame
         var o = NSPoint(x: anchor.minX + 14, y: anchor.maxY + 14)
         if let vis = NSScreen.main?.visibleFrame {
             o.x = min(max(vis.minX, o.x), vis.maxX - size.width)

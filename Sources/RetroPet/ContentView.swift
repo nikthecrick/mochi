@@ -710,7 +710,7 @@ struct PlayMenuButton: View {
     }
 }
 
-// MARK: - Play tricks panel (small glass card below the pet)
+// MARK: - Play tricks panel (below the main menu, same glass design, smaller)
 struct PlayMenuPanel: View {
     @ObservedObject var engine: PetEngine
     var onClose: () -> Void = {}
@@ -726,10 +726,13 @@ struct PlayMenuPanel: View {
                 PlayMenuButton(mode: .zoom, isSelected: engine.playMode == .zoom) { engine.play(.zoom) }
             }
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 14).fill(.ultraThinMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.22)))
-        .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color(nsColor: NSColor(red: 0.13, green: 0.12, blue: 0.17, alpha: 0.72)))
+                .shadow(color: .black.opacity(0.45), radius: 14, y: 8)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.14)))
         .fixedSize()
     }
 }
