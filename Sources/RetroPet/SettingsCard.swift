@@ -14,6 +14,7 @@ struct SettingsCard: View {
     var onRemovePool: () -> Void
     var onLend: (() -> Void)? = nil
     var onBorrow: (() -> Void)? = nil
+    var onPlay: () -> Void = {}
 
     @AppStorage(PetRates.digestDefaultsKey) private var digest: Double = 300
     @AppStorage(PetRates.walkChanceDefaultsKey) private var walkChance: Double = PetRates.defaultWalkChance
@@ -27,15 +28,8 @@ struct SettingsCard: View {
 
             section("CARE") {
                 row("carrot.fill", "Feed a snack", color: .orange) { engine.feed() }
-                row("gamecontroller.fill", "Play", color: .pink) { engine.play(.toss) }
+                row("gamecontroller.fill", "Play", color: .pink) { onPlay() }
                 row("zzz", engine.model.asleep ? "Wake up" : "Sleep", color: .indigo) { engine.toggleSleep() }
-            }
-
-            section("SOUND & CONTROLS") {
-                switcher("Ambient music", isOn: $sound.musicOn)
-                switcher("Sound effects", isOn: Binding(
-                    get: { !sound.muted }, set: { sound.muted = !$0 }))
-                switcher("Pin controls", isOn: $engine.controlsPinned)
             }
 
             section("CONTROLS APPEAR") {

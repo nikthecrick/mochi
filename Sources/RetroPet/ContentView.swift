@@ -164,45 +164,13 @@ struct PetRootView: View {
     var dragDelta: (CGFloat, CGFloat) -> Void
     var settle: () -> Void
     var popMenu: () -> Void
+    var onPlay: () -> Void = {}
     var moveWindow: (Double, Double) -> Void          // wander: move the panel itself
 
     @State private var dropHot = false
     @State private var lastT: Double = 0
     @State private var eggDetail = false   // click the egg's temp badge -> details
-    @State private var showPlayMenu = false   // play menu: toss / spin / salto / zoom
     @AppStorage("RetroPet.showMode") private var showMode = "hover"   // hover | ear
-
-    // MARK: - Play Menu (2×2 grid of trick buttons)
-    private var playMenu: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 20) {
-                PlayMenuButton(mode: .toss, isSelected: engine.playMode == .toss) {
-                    engine.play(.toss)
-                    showPlayMenu = false
-                }
-                PlayMenuButton(mode: .spin, isSelected: engine.playMode == .spin) {
-                    engine.play(.spin)
-                    showPlayMenu = false
-                }
-            }
-            HStack(spacing: 20) {
-                PlayMenuButton(mode: .salto, isSelected: engine.playMode == .salto) {
-                    engine.play(.salto)
-                    showPlayMenu = false
-                }
-                PlayMenuButton(mode: .zoom, isSelected: engine.playMode == .zoom) {
-                    engine.play(.zoom)
-                    showPlayMenu = false
-                }
-            }
-        }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.2)))
-        .fixedSize()
-    }
-
-    private func onPlay() { showPlayMenu.toggle() }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.1)) { tl in
@@ -263,11 +231,6 @@ struct PetRootView: View {
                     }
                     .padding(.horizontal, 10)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
-                if showPlayMenu {
-                    playMenu
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .position(x: 140, y: 120)
                 }
             }
         }
@@ -697,9 +660,6 @@ struct ControlsBar: View {
                 .frame(height: 16)
                 .overlay(Color.white.opacity(0.25))
             ctl("gearshape.fill", color: .gray, tip: "Settings") { onSettings() }
-            ctl("music.note", color: sound.musicOn ? .teal : .gray, tip: "Ambient music") { sound.musicOn.toggle() }
-            ctl(sound.muted ? "speaker.slash.fill" : "speaker.wave.2.fill",
-                color: sound.muted ? .gray : .teal, tip: "Mute sounds") { sound.muted.toggle() }
         }
         .padding(7)
         .background(RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial))
@@ -728,7 +688,7 @@ struct IconButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - Play Menu Buttons
+// MARK: - Play Menu Button (smaller, for the panel)
 struct PlayMenuButton: View {
     let mode: PlayMode
     let isSelected: Bool
@@ -737,16 +697,40 @@ struct PlayMenuButton: View {
         Button(action: action) {
             VStack(spacing: 2) {
                 Image(systemName: mode.icon)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(isSelected ? .white : .white.opacity(0.6))
                 Text(mode.rawValue)
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 7, weight: .semibold))
                     .foregroundColor(isSelected ? .white : .white.opacity(0.6))
             }
         }
-        .padding(8)
+        .padding(6)
         .background(Capsule().fill(isSelected ? Color.white : Color.white.opacity(0.08)))
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Play tricks panel (small glass card below the pet)
+struct PlayMenuPanel: View {
+    @ObservedObject var engine: PetEngine
+    var onClose: () -> Void = {}
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                PlayMenuButton(mode: .toss, isSelected: engine.playMode == .toss) { engine.play(.toss) }
+                PlayMenuButton(mode: .spin, isSelected: engine.playMode == .spin) { engine.play(.spin) }
+            }
+            HStack(spacing: 12) {
+                PlayMenuButton(mode: .salto, isSelected: engine.playMode == .salto) { engine.play(.salto) }
+                PlayMenuButton(mode: .zoom, isSelected: engine.playMode == .zoom) { engine.play(.zoom) }
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 14).fill(.ultraThinMaterial))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.22)))
+        .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
+        .fixedSize()
     }
 }
 

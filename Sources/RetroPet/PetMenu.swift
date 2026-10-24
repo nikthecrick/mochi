@@ -13,10 +13,11 @@ enum PetMenu {
     }
     static var assocKey: UInt8 = 0
 
-    static func make(engine: PetEngine, sound: SoundBank,
+    static func make(engine: PetEngine,
                      cleanToilet: @escaping () -> Void = {},
                      givePool: @escaping () -> Void = {},
-                     removePool: @escaping () -> Void = {}) -> NSMenu {
+                     removePool: @escaping () -> Void = {},
+                     onPlay: (() -> Void)? = nil) -> NSMenu {
         let box = Box()
         func item(_ title: String, fn: @escaping () -> Void) -> NSMenuItem {
             let h = Handler(fn)
@@ -84,11 +85,9 @@ enum PetMenu {
         walkParent.submenu = walkMenu
 
         menu.addItem(item("Feed a snack") { engine.feed() })
-        menu.addItem(item("Play") { engine.play(.toss) })
+        menu.addItem(item("Play tricks…") { engine.play(.toss); onPlay?() })
         menu.addItem(item(engine.model.asleep ? "Wake up" : "Sleep") { engine.toggleSleep() })
         menu.addItem(.separator())
-        menu.addItem(toggle("Ambient music", isOn: sound.musicOn) { sound.musicOn.toggle() })
-        menu.addItem(toggle("Mute sound effects", isOn: sound.muted) { sound.muted.toggle() })
         menu.addItem(toggle("Pin controls", isOn: engine.controlsPinned) { engine.controlsPinned.toggle() })
         menu.addItem(.separator())
         menu.addItem(item("Feed with a file… (moved to Trash)") { Dialogs.eatFilePicker(engine) })

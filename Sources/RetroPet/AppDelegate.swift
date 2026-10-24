@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: PetPanel?
     private var poolPanel: PetPanel?
     private var settingsPanel: PetPanel?
+    private var playPanel: PetPanel?
     private var activity: NSObjectProtocol?
     private var keyMonitor: Any?
 
@@ -52,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dragDelta: { [weak self] dx, dy in self?.dragWindow(dx: dx, dy: dy) },
             settle: { [weak self] in self?.settleWindow() },
             popMenu: { [weak self] in self?.popupMenu() },
+            onPlay: { [weak self] in self?.showPlayMenu() },
             moveWindow: { [weak self] dx, dy in self?.movePetWindow(dx: dx, dy: dy) }
         ))
         p.setFrame(defaultWindowFrame(), display: true)
@@ -151,7 +153,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onBorrow: engine.devMode ? { [weak self] in
                 self?.settingsPanel?.orderOut(nil)
                 Dialogs.borrow(self?.engine ?? PetEngine())
-            } : nil
+            } : nil,
+            onPlay: { [weak self] in
+                self?.settingsPanel?.orderOut(nil)
+                self?.showPlayMenu()
+            }
         ))
         let p = PetPanel.make()
         p.contentView = hosting
@@ -166,6 +172,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hosting.invalidateIntrinsicContentSize()
         let size = hosting.fittingSize.width > 10 ? hosting.fittingSize : NSSize(width: 248, height: 420)
         var o = NSPoint(x: pet.frame.maxX + 14, y: pet.frame.maxY - size.height)
+        if let vis = NSScreen.main?.visibleFrame {
+            o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
+            o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
+        }
+        p.setFrame(NSRect(origin: o, size: size), display: true)
+    }
+
+    // MARK: - play menu (small glass panel, placed just below the settings card)
+
+    private func showPlayMenu() {
+        if let p = playPanel {
+            if p.isVisible { p.orderOut(nil); return }
+            placePlayMenu(p)
+            p.orderFrontRegardless()
+            return
+        }
+        let hosting = NSHostingView(rootView: PlayMenuPanel(engine: engine,
+            onClose: { [weak self] in self?.playPanel?.orderOut(nil) }))
+        let p = PetPanel.make()
+        p.contentView = hosting
+        playPanel = p
+        placePlayMenu(p)
+        p.orderFrontRegardless()
+    }
+
+    private func placePlayMenu(_ p: PetPanel) {
+        let anchor: NSRect = settingsPanel?.isVisible == true
+            ? (settingsPanel?.frame ?? panel?.frame ?? .zero)
+            : (panel?.frame ?? .zero)
+        let size = NSSize(width: 168, height: 108)
+        var o = NSPoint(x: anchor.minX + 14, y: anchor.maxY + 14)
         if let vis = NSScreen.main?.visibleFrame {
             o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
             o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
