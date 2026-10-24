@@ -201,9 +201,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let hosting = p.contentView as? NSHostingView<PlayMenuPanel> else { return }
         hosting.invalidateIntrinsicContentSize()
         let size = hosting.fittingSize.width > 10 ? hosting.fittingSize : NSSize(width: 168, height: 108)
-        // Anchor below the settings panel when it exists, otherwise below the pet
-        let anchor: NSRect = settingsPanel?.frame ?? pet.frame
-        var o = NSPoint(x: anchor.minX + 14, y: anchor.maxY + 14)
+        // Anchor below settings when open, otherwise below the pet panel.
+        let anchorX = settingsPanel?.frame.minX ?? pet.frame.minX
+        let anchorY: CGFloat
+        if let settings = settingsPanel, settings.isVisible {
+            anchorY = settings.frame.minY        // bottom edge of settings panel
+        } else {
+            anchorY = pet.frame.minY             // bottom edge of pet panel
+        }
+        var o = NSPoint(x: anchorX + 14, y: anchorY - size.height - 14)
         if let vis = NSScreen.main?.visibleFrame {
             o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
             o.y = min(max(vis.minY, o.y), vis.maxY - size.height)

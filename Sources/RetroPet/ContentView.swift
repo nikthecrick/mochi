@@ -688,25 +688,29 @@ struct IconButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - Play Menu Button (smaller, for the panel)
+// MARK: - Play Menu Button (smaller, same row design as the main menu)
 struct PlayMenuButton: View {
     let mode: PlayMode
     let isSelected: Bool
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 2) {
+            HStack(spacing: 6) {
                 Image(systemName: mode.icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(isSelected ? .white : .white.opacity(0.6))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(isSelected ? .black : .white.opacity(0.92))
+                    .frame(width: 14)
                 Text(mode.rawValue)
-                    .font(.system(size: 7, weight: .semibold))
-                    .foregroundColor(isSelected ? .white : .white.opacity(0.6))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(isSelected ? .black : .white.opacity(0.92))
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 9).fill(isSelected ? Color.white : Color.white.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(isSelected ? Color.white.opacity(0.5) : Color.white.opacity(0.05)))
         }
-        .padding(6)
-        .background(Capsule().fill(isSelected ? Color.white : Color.white.opacity(0.08)))
-        .buttonStyle(.plain)
+        .buttonStyle(HoverPress())
     }
 }
 
