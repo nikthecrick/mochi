@@ -651,19 +651,43 @@ struct ControlsBar: View {
     var onSettings: () -> Void = {}
     var onPlay: () -> Void = {}
 
+    @State private var showTricks = false
+
     var body: some View {
-        HStack(spacing: 5) {
-            ctl("carrot.fill", color: .orange, tip: "Feed a snack") { engine.feed() }
-            ctl("gamecontroller.fill", color: .pink, tip: "Play") { onPlay() }
-            ctl("zzz", color: .indigo, tip: engine.model.asleep ? "Wake up" : "Sleep") { engine.toggleSleep() }
-            Divider()
-                .frame(height: 16)
-                .overlay(Color.white.opacity(0.25))
-            ctl("gearshape.fill", color: .gray, tip: "Settings") { onSettings() }
+        VStack(spacing: 0) {
+            HStack(spacing: 5) {
+                ctl("carrot.fill", color: .orange, tip: "Feed a snack") { engine.feed() }
+                ctl("gamecontroller.fill", color: .pink, tip: "Play") { showTricks.toggle() }
+                ctl("zzz", color: .indigo, tip: engine.model.asleep ? "Wake up" : "Sleep") { engine.toggleSleep() }
+                Divider()
+                    .frame(height: 16)
+                    .overlay(Color.white.opacity(0.25))
+                ctl("gearshape.fill", color: .gray, tip: "Settings") { onSettings() }
+            }
+            if showTricks {
+                VStack(spacing: 5) {
+                    HStack(spacing: 5) {
+                        trickBtn(mode: .toss)
+                        trickBtn(mode: .spin)
+                        trickBtn(mode: .salto)
+                        trickBtn(mode: .zoom)
+                    }
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 5)
+                .transition(.opacity)
+            }
         }
         .padding(7)
         .background(RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.18)))
+    }
+
+    private func trickBtn(mode: PlayMode) -> some View {
+        ctl(mode.icon, color: .pink, tip: mode.rawValue) {
+            engine.play(mode)
+            showTricks = false
+        }
     }
 
     @ViewBuilder
@@ -688,58 +712,6 @@ struct IconButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - Play Menu Button (smaller, same row design as the main menu)
-struct PlayMenuButton: View {
-    let mode: PlayMode
-    let isSelected: Bool
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: mode.icon)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(isSelected ? .black : .white.opacity(0.92))
-                    .frame(width: 14)
-                Text(mode.rawValue)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(isSelected ? .black : .white.opacity(0.92))
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(RoundedRectangle(cornerRadius: 9).fill(isSelected ? Color.white : Color.white.opacity(0.06)))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(isSelected ? Color.white.opacity(0.5) : Color.white.opacity(0.05)))
-        }
-        .buttonStyle(HoverPress())
-    }
-}
-
-// MARK: - Play tricks panel (below the main menu, same glass design, smaller)
-struct PlayMenuPanel: View {
-    @ObservedObject var engine: PetEngine
-    var onClose: () -> Void = {}
-
-    var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 12) {
-                PlayMenuButton(mode: .toss, isSelected: engine.playMode == .toss) { engine.play(.toss) }
-                PlayMenuButton(mode: .spin, isSelected: engine.playMode == .spin) { engine.play(.spin) }
-            }
-            HStack(spacing: 12) {
-                PlayMenuButton(mode: .salto, isSelected: engine.playMode == .salto) { engine.play(.salto) }
-                PlayMenuButton(mode: .zoom, isSelected: engine.playMode == .zoom) { engine.play(.zoom) }
-            }
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color(nsColor: NSColor(red: 0.13, green: 0.12, blue: 0.17, alpha: 0.72)))
-                .shadow(color: .black.opacity(0.45), radius: 14, y: 8)
-        )
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.14)))
-        .fixedSize()
-    }
-}
 
 // MARK: - Pool (gadget stage: a little pixel pond you can park anywhere)
 

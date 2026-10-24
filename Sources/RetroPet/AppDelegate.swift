@@ -7,7 +7,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: PetPanel?
     private var poolPanel: PetPanel?
     private var settingsPanel: PetPanel?
-    private var playPanel: PetPanel?
     private var activity: NSObjectProtocol?
     private var keyMonitor: Any?
 
@@ -53,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dragDelta: { [weak self] dx, dy in self?.dragWindow(dx: dx, dy: dy) },
             settle: { [weak self] in self?.settleWindow() },
             popMenu: { [weak self] in self?.popupMenu() },
-            onPlay: { [weak self] in self?.showPlayMenu() },
+            onPlay: {},
             moveWindow: { [weak self] dx, dy in self?.movePetWindow(dx: dx, dy: dy) }
         ))
         p.setFrame(defaultWindowFrame(), display: true)
@@ -153,10 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onBorrow: engine.devMode ? { [weak self] in
                 self?.settingsPanel?.orderOut(nil)
                 Dialogs.borrow(self?.engine ?? PetEngine())
-            } : nil,
-            onPlay: { [weak self] in
-                self?.showPlayMenu()
-            }
+            } : nil
         ))
         let p = PetPanel.make()
         p.contentView = hosting
@@ -179,43 +175,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - play menu (small glass panel, placed just below the settings card)
-
-    private func showPlayMenu() {
-        if let p = playPanel {
-            if p.isVisible { p.orderOut(nil); return }
-            placePlayMenu(p)
-            p.orderFrontRegardless()
-            return
-        }
-        let hosting = NSHostingView(rootView: PlayMenuPanel(engine: engine,
-            onClose: { [weak self] in self?.playPanel?.orderOut(nil) }))
-        let p = PetPanel.make()
-        p.contentView = hosting
-        playPanel = p
-        placePlayMenu(p)
-        p.orderFrontRegardless()
-    }
-
-    private func placePlayMenu(_ p: PetPanel) {
-        guard let pet = panel,
-              let hosting = p.contentView as? NSHostingView<PlayMenuPanel> else { return }
-        hosting.invalidateIntrinsicContentSize()
-        let size = hosting.fittingSize.width > 10 ? hosting.fittingSize : NSSize(width: 168, height: 108)
-        // Anchor below settings when open, otherwise below the pet panel.
-        let anchorX = settingsPanel?.frame.minX ?? pet.frame.minX
-        let anchorY: CGFloat
-        if let settings = settingsPanel, settings.isVisible {
-            anchorY = settings.frame.minY        // bottom edge of settings panel
-        } else {
-            anchorY = pet.frame.minY             // bottom edge of pet panel
-        }
-        var o = NSPoint(x: anchorX + 14, y: anchorY - size.height - 14)
-        if let vis = NSScreen.main?.visibleFrame {
-            o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
-            o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
-        }
-        p.setFrame(NSRect(origin: o, size: size), display: true)
-    }
 
     /// Wander: the pet's window really walks across the screen (both axes),
     /// clamped to the visible area; hitting an edge turns it around.
