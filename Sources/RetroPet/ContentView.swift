@@ -747,34 +747,29 @@ struct PetPlayModifier: ViewModifier {
     let engine: PetEngine
     @ViewBuilder
     func body(content: Content) -> some View {
-        let phase = engine.playPhase
         if engine.playActive, engine.playMode == .toss {
-            // Toss: launch up in an arc, rotate half-turn at peak, then settle
-            let yOffset = -8 * phase * (1 - phase)      // parabolic arc up then down
-            let rotation = .pi * 0.5 * phase * (1 - phase)  // half-turn at apex
-            content
-                .offset(y: yOffset)
-                .rotationEffect(.radians(rotation))
+            let phase = engine.playPhase
+            let yOffset = -18 * phase * (1 - phase)
+            let rotation = .pi * 0.5 * phase * (1 - phase)
+            content.offset(y: yOffset).rotationEffect(.radians(rotation))
         } else if engine.playActive, engine.playMode == .spin {
-            // Spin: rapid continuous spin with subtle scale wobble
-            let rotations = 6 * phase                          // 6 full turns
-            let wobble = 1 + 0.03 * sin(.pi * phase * 4)      // gentle scale wobble
-            content.rotationEffect(.radians(.pi * 2 * rotations))
-                .scaleEffect(wobble)
+            let phase = engine.playPhase
+            let rotations = 8 * phase
+            let wobble = 1 + 0.08 * sin(.pi * phase * 4)
+            content.rotationEffect(.radians(.pi * 2 * rotations)).scaleEffect(wobble)
         } else if engine.playActive, engine.playMode == .salto {
-            // Salto: full 360° front-flip illusion with squash-and-stretch
-            let rotation = .pi * 2 * phase                       // full flip
-            let squash = 1 - 0.15 * phase                      // compress during flip
-            let stretch = 1 + 0.15 * phase                     // extend during flip
-            content
-                .rotationEffect(.radians(rotation))
-                .scaleEffect(x: squash, y: stretch)
+            let phase = engine.playPhase
+            let rotation = .pi * 2 * phase
+            let squash = 1 - 0.2 * phase
+            let stretch = 1 + 0.2 * phase
+            content.rotationEffect(.radians(rotation)).scaleEffect(x: squash, y: stretch)
         } else if engine.playActive, engine.playMode == .zoom {
-            // Zoom: rapid dash pulse with motion stretch
-            let pulse = 1.15 - 0.15 * cos(.pi * phase)       // overshoot pulse
-            let forward = 1 + 0.1 * phase                    // stretch forward
-            content.scaleEffect(pulse).offset(x: 4 * phase)
-        } else { content }
+            let phase = engine.playPhase
+            let pulse = 1.25 - 0.15 * cos(.pi * phase)
+            content.scaleEffect(pulse).offset(x: 6 * phase)
+        } else {
+            content
+        }
     }
 }
 
