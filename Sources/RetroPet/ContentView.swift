@@ -749,17 +749,31 @@ struct PetPlayModifier: ViewModifier {
     func body(content: Content) -> some View {
         let phase = engine.playPhase
         if engine.playActive, engine.playMode == .toss {
+            // Toss: launch up in an arc, rotate half-turn at peak, then settle
+            let yOffset = -8 * phase * (1 - phase)      // parabolic arc up then down
+            let rotation = .pi * 0.5 * phase * (1 - phase)  // half-turn at apex
             content
-                .scaleEffect(1 + 0.12 * CGFloat(sin(.pi * phase)))
-                .offset(y: -8 * CGFloat(sin(.pi * phase)))
+                .offset(y: yOffset)
+                .rotationEffect(.radians(rotation))
         } else if engine.playActive, engine.playMode == .spin {
-            content.rotationEffect(.radians(.pi * 2.5 * phase))
+            // Spin: rapid continuous spin with subtle scale wobble
+            let rotations = 6 * phase                          // 6 full turns
+            let wobble = 1 + 0.03 * sin(.pi * phase * 4)      // gentle scale wobble
+            content.rotationEffect(.radians(.pi * 2 * rotations))
+                .scaleEffect(wobble)
         } else if engine.playActive, engine.playMode == .salto {
+            // Salto: full 360° front-flip illusion with squash-and-stretch
+            let rotation = .pi * 2 * phase                       // full flip
+            let squash = 1 - 0.15 * phase                      // compress during flip
+            let stretch = 1 + 0.15 * phase                     // extend during flip
             content
-                .rotationEffect(.radians(.pi * 2 * phase))
-                .offset(y: -16 * CGFloat(sin(.pi * phase)))
+                .rotationEffect(.radians(rotation))
+                .scaleEffect(x: squash, y: stretch)
         } else if engine.playActive, engine.playMode == .zoom {
-            content.scaleEffect(1.25)
+            // Zoom: rapid dash pulse with motion stretch
+            let pulse = 1.15 - 0.15 * cos(.pi * phase)       // overshoot pulse
+            let forward = 1 + 0.1 * phase                    // stretch forward
+            content.scaleEffect(pulse).offset(x: 4 * phase)
         } else { content }
     }
 }
