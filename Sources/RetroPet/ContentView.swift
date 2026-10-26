@@ -275,10 +275,13 @@ struct PetRootView: View {
                     onRelease: { moved in
                         if moved {
                             settle()
-                        } else if showMode == "ear" {
-                            engine.earOpen.toggle()          // click left ear: open/close controls
                         } else {
-                            engine.pat()
+                            engine.earHint = false          // first left-ear click: drop the hint
+                            if showMode == "ear" {
+                                engine.earOpen.toggle()  // click left ear: open/close controls
+                            } else {
+                                engine.pat()
+                            }
                         }
                     },
                     onRightClick: { popMenu() }
@@ -324,14 +327,16 @@ struct PetRootView: View {
         }
     }
 
-    /// Soft pulsing silhouette glow while `glowUntil` lasts (fed a nice file).
+    /// Soft pulsing silhouette glow while `glowUntil` lasts (fed a nice file),
+    /// or the subtle first-time left-ear click hint. Masked to the left ear.
     @ViewBuilder
     private func earGlow(frame: Frame, t: Double) -> some View {
-        if engine.glowActive {
+        if engine.glowActive || engine.earHint {
             let pulse = 0.3 + 0.25 * (0.5 + 0.5 * sin(t * 7))
             PixelSpriteView(frame: frame, scale: scale, tint: Pal.color("Y"))
                 .blur(radius: 2.5)
                 .opacity(pulse)
+                .mask(LeftEarGlowMask())
                 .allowsHitTesting(false)
         }
     }
@@ -645,6 +650,21 @@ struct PetRootView: View {
 
 // MARK: - Controls (modern glass buttons)
 
+/// Mask shape: the left-ear glow region of the sprite (left ~35% width, top ~35% height).
+private struct LeftEarGlowMask: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        var p = Path()
+        let rx = rect.minX + w * 0.20, ry = rect.minY, rw = w * 0.35, rh = h * 0.35
+        p.move(to: CGPoint(x: rx, y: ry))
+        p.addLine(to: CGPoint(x: rx + rw, y: ry))
+        p.addLine(to: CGPoint(x: rx + rw, y: ry + rh))
+        p.addLine(to: CGPoint(x: rx, y: ry + rh))
+        p.closeSubpath()
+        return p
+    }
+}
+
 struct ControlsBar: View {
     let engine: PetEngine
     let sound: SoundBank
@@ -744,7 +764,7 @@ struct PoolRootView: View {
 
 // MARK: - Play animation (toss / spin / salto / zoom)
 struct PetPlayModifier: ViewModifier {
-    let engine: PetEngine
+    @ObservedObject var engine: PetEngine
     @ViewBuilder
     func body(content: Content) -> some View {
         if engine.playActive, engine.playMode == .toss {

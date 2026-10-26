@@ -108,6 +108,7 @@ final class PetEngine: ObservableObject {
     @Published var eatUntil: Date?
     @Published var happyUntil: Date?
     @Published var glowUntil: Date?      // ears glow (fed a nice file)
+    @Published var earHint = true        // first-time subtle left-ear glow -> click to open settings
     @Published var legsUntil: Date?      // growth moment window
     @Published var dragged = false        // true while the user drags the pet
     @Published var poopUntil: Date?      // squeezing one out
