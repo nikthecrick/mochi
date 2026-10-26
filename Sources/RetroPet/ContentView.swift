@@ -218,6 +218,7 @@ struct PetRootView: View {
                 }
                 heartsOverlay(t: t)
                 poopsOverlay
+                tarOverlay
                 if mood == .egg && eggDetail { eggDetailCard }
                 if mood != .egg && !engine.model.dead { needPods(t: t) }
                 if dropHot { feedMeHint }
@@ -262,7 +263,7 @@ struct PetRootView: View {
                     engine.dragged = false
                     if moved { settle() }
                     else if mood == .egg { eggDetail.toggle() }   // click anywhere on the egg -> details
-                    else { engine.pat() }
+                    else { engine.pat(); engine.easterEggClick() }
                 },
                 onRightClick: { popMenu() },
                 activateOnClick: mood == .egg
@@ -504,6 +505,17 @@ struct PetRootView: View {
         }
     }
 
+    // Tar-ball hairball easter egg: a .tar of fed files lands on the Desktop.
+    @ViewBuilder
+    private var tarOverlay: some View {
+        if engine.tarBall {
+            PixelSpriteView(frame: .poop, scale: 3)
+                .shadow(color: .black.opacity(0.25), radius: 2, y: 2)
+                .offset(x: Double.random(in: -30...30), y: Double.random(in: -20...10))
+                .help("Mochi spat out a tar ball: \(engine.tarBallName ?? "tar.gz") — click to open")
+        }
+    }
+
     // MARK: frames & motion
 
     private func pickFrame(mood: Mood, t: Double) -> Frame {
@@ -537,6 +549,14 @@ struct PetRootView: View {
             return engine.evolution >= 2
                 ? (fast ? .walkLegs2A : .walkLegs2B)
                 : (fast ? .walkLegsA : .walkLegsB)
+        }
+        // Tar-ball hairball: the mochi spits out a .tar of fed files (cat hairball style).
+        if engine.tarBall && mood != .dead && mood != .egg && mood != .hatch {
+            return Int(t * 6) % 2 == 0 ? .strainA : .strainB
+        }
+        // Balloon inflate easter egg: eyes animate while it grows + floats.
+        if engine.inflateActive && mood != .dead && mood != .egg && mood != .hatch {
+            return Int(t * 12) % 2 == 0 ? .happyA : .happyB
         }
         // Play tricks override mood frames
         if engine.playActive && mood != .dead && mood != .egg && mood != .hatch {
@@ -767,7 +787,25 @@ struct PetPlayModifier: ViewModifier {
     @ObservedObject var engine: PetEngine
     @ViewBuilder
     func body(content: Content) -> some View {
-        if engine.playActive, engine.playMode == .toss {
+        if engine.inflateActive {
+            let phase = engine.inflatePhase
+            let t = CGFloat(phase)
+            // grow -> float up -> drift (wind) -> deflate, over the 2.5s
+            let scale: CGFloat = t < 0.30 ? (1 + 0.55 * (t / 0.30))
+                : (t < 0.60 ? 1.55
+                : (t < 0.85 ? 1.55
+                : (1 + 0.55 * (1 - min(1, (t - 0.85) / 0.15)))))
+            let floatY: CGFloat = t < 0.30 ? 0.0
+                : (t < 0.60 ? -44 * ((t - 0.30) / 0.30)
+                : (t < 0.85 ? -44.0
+                : (-44 * (1 - min(1, (t - 0.85) / 0.15)))));
+            let floatX: CGFloat = t < 0.60 ? 0.0
+                : (t < 0.85 ? 16 * CGFloat(sin(Double(t) * 1.5)) : 0.0);
+            content.scaleEffect(scale).offset(x: floatX, y: floatY)
+        } else if engine.tarBall {
+            let w = 0.08 * CGFloat(sin(Double(engine.now.timeIntervalSinceReferenceDate) * 6.0))
+            content.rotationEffect(.radians(.pi * 0.2 * w)).scaleEffect(1 + w)
+        } else if engine.playActive, engine.playMode == .toss {
             let phase = engine.playPhase
             let yOffset = -18 * phase * (1 - phase)
             let rotation = .pi * 0.5 * phase * (1 - phase)

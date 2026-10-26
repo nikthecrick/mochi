@@ -78,6 +78,7 @@ enum PetRates {
     static let walkSpeedMax = 16.0
     static let jumpSeconds = 0.9
     static let playDuration = 1.6     // how long a trick plays out
+    static let inflateSeconds = 50.0  // balloon inflate -> float
     static let jumpChance = 0.00007     // rare happy hops (avg every ~25 min)
     static let defaultWalkChance = 0.00085   // setting default (avg every ~20 min)
     /// Age -> sprite size (piecewise linear; hours, sprite px per cell).
@@ -116,6 +117,9 @@ final class PetEngine: ObservableObject {
     // the file is restored (back where it came from) and the pile vanishes.
     @Published var pile: PoopRecord?     // transient, not persisted
     @Published var pileUntil: Date?
+    @Published var tarUntil: Date?       // tar ball visual lifetime
+    @Published var tarBall: Bool = false // tar ball visual on
+    @Published var tarBallName: String? = nil
     // Wander: the pet really MOVES its window across the screen — horizontal
     // AND vertical — and turns around when it sniffs the screen edge.
     @Published var walkUntil: Date?
@@ -128,6 +132,8 @@ final class PetEngine: ObservableObject {
     // Play: a trick from the play menu (toss / spin / salto / zoom).
     @Published var playMode: PlayMode = .toss
     @Published var playUntil: Date?
+    @Published var clickCount = 0          // consecutive pet clicks -> easter egg
+    @Published var inflateUntil: Date?    // balloon inflate -> float
     // Growing: size follows age; a springy bounce plays at milestones.
     @Published var growBounceUntil: Date?
     private var lastScaleMark = -1.0
@@ -195,11 +201,18 @@ final class PetEngine: ObservableObject {
     var swimActive: Bool { swimUntil.map { now < $0 } ?? false }
     var growBounceActive: Bool { growBounceUntil.map { now < $0 } ?? false }
     var playActive: Bool { playUntil.map { now < $0 } ?? false }
+    var inflateActive: Bool { inflateUntil.map { now < $0 } ?? false }
     /// 0..1 progress of the current trick.
     var playPhase: Double {
         guard let u = playUntil else { return 0 }
         let remaining = u.timeIntervalSince(now)
         return max(0, min(1, 1 - remaining / PetRates.playDuration))
+    }
+    /// 0..1 progress of the balloon inflate (0 = growing, 1 = floating done).
+    var inflatePhase: Double {
+        guard let u = inflateUntil else { return 0 }
+        let remaining = u.timeIntervalSince(now)
+        return max(0, min(1, 1 - remaining / PetRates.inflateSeconds))
     }
 
     /// Chubbiness 0...100 (nil -> slim default).
@@ -245,6 +258,7 @@ final class PetEngine: ObservableObject {
         maybeWalk()
         maybeJump()
         maybePoop()
+        maybeTar()
         maybePlay()
         pruneParticles()
         autoSave()
@@ -685,6 +699,46 @@ final class PetEngine: ObservableObject {
         return restored
     }
 
+    /// Tar-ball behaviour: the mochi spits out a .tar of the files it ate,
+    /// landing on the Desktop (cat-hairball style). Occasional, random.
+    func maybeTar(probability: Double = 0.0002) {
+        guard !model.dead, model.everHatched, !model.asleep,
+              !tarBall, !poopActive, !jumpActive, !playActive, !swimActive,
+              !isWalking,
+              Double.random(in: 0..<1) < probability else { return }
+        spitTarBall()
+    }
+
+    func spitTarBall() {
+        var files: [URL] = []
+        if let eaten = model.lastEaten {
+            for name in eaten {
+                if name.hasPrefix("tab:") { continue }
+                let u = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".Trash/\(name)")
+                if FileManager.default.fileExists(atPath: u.path) { files.append(u) }
+                if files.count >= 3 { break }
+            }
+        }
+        guard !files.isEmpty else { return }
+        let fm = FileManager.default
+        let desktop = fm.urls(for: .desktopDirectory, in: .userDomainMask).first
+            ?? fm.homeDirectoryForCurrentUser
+        let outURL = desktop.appendingPathComponent(
+            "Mochi-\(Int(now.timeIntervalSince1970)).tar.gz")
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        p.arguments = ["-czf", outURL.path] + files.map { $0.path }
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = pipe
+        do { try p.run() } catch {}
+        p.waitUntilExit()
+        tarBall = true
+        tarBallName = outURL.lastPathComponent
+        tarUntil = now.addingTimeInterval(4)
+    }
+
     /// Occasionally does a random trick when idle and happy.
     func maybePlay(probability: Double = 0.0001) {
         guard !model.dead, model.everHatched, !model.asleep,
@@ -714,6 +768,21 @@ final class PetEngine: ObservableObject {
         spawn(.sparkle, mode == .toss ? 2 : 4)
         sound?.play(.play)
         save()
+    }
+
+    /// Easter egg: 3 quick clicks on the pet -> balloon inflate + float.
+    func easterEggClick() {
+        guard !model.dead, model.everHatched, !model.asleep else { return }
+        guard !inflateActive else { return }
+        clickCount += 1
+        if clickCount >= 3 { startInflate() }
+    }
+
+    func startInflate() {
+        clickCount = 0
+        inflateUntil = now.addingTimeInterval(PetRates.inflateSeconds)
+        model.happiness = min(100, model.happiness + 10)
+        spawn(.heart, 3)
     }
 
     /// Random trick, for the occasional autonomous play session.
