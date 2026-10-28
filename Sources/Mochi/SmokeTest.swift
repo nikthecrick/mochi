@@ -1,6 +1,6 @@
 import Foundation
 
-/// Headless self-test: `RetroPet --smoke`
+/// Headless self-test: `Mochi --smoke`
 enum SmokeTest {
     static func run() -> String {
         var failures = 0
@@ -10,7 +10,7 @@ enum SmokeTest {
         }
 
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("retropet-smoke-\(UUID().uuidString)")
+            .appendingPathComponent("mochi-smoke-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         PetStore.directory = tmp
         DeathNote.directoryOverride = tmp
@@ -80,10 +80,10 @@ enum SmokeTest {
         check("pet.json round trip", back?.name == "RoundTrip" && back?.dead == true)
 
         // 6) borrow-pet round trip (prepared feature)
-        let lendURL = tmp.appendingPathComponent("friend.retropet")
+        let lendURL = tmp.appendingPathComponent("friend.mochi")
         var exported = false
         do { try BorrowManager.export(m, to: lendURL); exported = true } catch {}
-        check("export .retropet snapshot", exported)
+        check("export .mochi snapshot", exported)
         let borrowed = try? BorrowManager.importPet(at: lendURL)
         check("import borrowed pet", borrowed?.name == "RoundTrip" && borrowed?.borrowedFrom != nil)
 

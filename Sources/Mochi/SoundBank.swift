@@ -12,13 +12,13 @@ final class SoundBank: ObservableObject {
 
     @Published var musicOn: Bool {
         didSet {
-            UserDefaults.standard.set(musicOn, forKey: "RetroPet.musicOn")
+            UserDefaults.standard.set(musicOn, forKey: "Mochi.musicOn")
             applyMusic()
         }
     }
     @Published var muted: Bool {
         didSet {
-            UserDefaults.standard.set(muted, forKey: "RetroPet.muted")
+            UserDefaults.standard.set(muted, forKey: "Mochi.muted")
             if muted { stopAmbient() }
         }
     }
@@ -31,8 +31,8 @@ final class SoundBank: ObservableObject {
 
     init() {
         // (assignments in init do not fire didSet)
-        musicOn = (UserDefaults.standard.object(forKey: "RetroPet.musicOn") as? Bool) ?? true
-        muted = (UserDefaults.standard.object(forKey: "RetroPet.muted") as? Bool) ?? false
+        musicOn = (UserDefaults.standard.object(forKey: "Mochi.musicOn") as? Bool) ?? true
+        muted = (UserDefaults.standard.object(forKey: "Mochi.muted") as? Bool) ?? false
 
         for s in Sfx.allCases {
             if let u = SoundBank.soundURL(s.rawValue), let p = try? AVAudioPlayer(contentsOf: u) {

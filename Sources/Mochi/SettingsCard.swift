@@ -18,7 +18,7 @@ struct SettingsCard: View {
 
     @AppStorage(PetRates.digestDefaultsKey) private var digest: Double = 300
     @AppStorage(PetRates.walkChanceDefaultsKey) private var walkChance: Double = PetRates.defaultWalkChance
-    @AppStorage("RetroPet.showMode") private var showMode = "ear"   // hover | ear
+    @AppStorage("Mochi.showMode") private var showMode = "ear"   // hover | ear
 
     private let w: CGFloat = 248
 
@@ -42,6 +42,15 @@ struct SettingsCard: View {
                 }
             }
 
+            section("SOUND & CONTROLS") {
+                switcher("Music on", isOn: Binding<Bool>(
+                    get: { sound.musicOn },
+                    set: { sound.musicOn = $0 }))
+                switcher("Sound effects on", isOn: Binding<Bool>(
+                    get: { !sound.muted },
+                    set: { sound.muted = !$0 }))
+            }
+
             section("POOP TIMING") {
                 pills([("Soon", 60), ("Normal", 300), ("Seldom", 900), ("Never", 0)], $digest)
             }
@@ -60,7 +69,7 @@ struct SettingsCard: View {
             section("PET") {
                 row("pencil", "Rename…", color: .gray) { Dialogs.rename(engine) }
                 row("sparkles", "New pet…", color: .pink) { Dialogs.newPet(engine) }
-                row("power", "Quit RetroPet", color: .red) { NSApp.terminate(nil) }
+                row("power", "Quit Mochi", color: .red) { NSApp.terminate(nil) }
             }
 
             if engine.devMode {

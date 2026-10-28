@@ -284,7 +284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             print("Mochi: toilet flushed — Trash emptied")
         } else {
             print("Mochi: emptying the Trash failed: \(String(describing: err))")
-            Dialogs.fail(NSError(domain: "RetroPet", code: 1, userInfo: [
+            Dialogs.fail(NSError(domain: "Mochi", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Couldn't empty the Trash (allow Finder automation when asked, or empty it manually)."
             ]))
         }

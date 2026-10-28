@@ -86,8 +86,8 @@ enum PetRates {
     static let growthTable: [(hours: Double, scale: Double)] = [
         (0, 4.5), (1, 5.0), (6, 5.5), (12, 6.0), (24, 6.5),
     ]
-    static let digestDefaultsKey = "RetroPet.digestSeconds"     // 0 = never
-    static let walkChanceDefaultsKey = "RetroPet.walkChance"    // 0 = never wanders
+    static let digestDefaultsKey = "Mochi.digestSeconds"     // 0 = never
+    static let walkChanceDefaultsKey = "Mochi.walkChance"    // 0 = never wanders
 
     /// Setting: meal -> poop delay, in seconds (0 = never).
     static func digestSetting() -> Double {

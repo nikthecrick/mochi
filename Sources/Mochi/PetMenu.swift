@@ -42,13 +42,13 @@ enum PetMenu {
 
         // Settings: how the glass controls appear
         let modeMenu = NSMenu()
-        let current = UserDefaults.standard.string(forKey: "RetroPet.showMode") ?? "hover"
+        let current = UserDefaults.standard.string(forKey: "Mochi.showMode") ?? "hover"
         let hoverItem = item("On hover") {
-            UserDefaults.standard.set("hover", forKey: "RetroPet.showMode")
+            UserDefaults.standard.set("hover", forKey: "Mochi.showMode")
         }
         hoverItem.state = current == "hover" ? .on : .off
         let earItem = item("On left-ear click (toggle)") {
-            UserDefaults.standard.set("ear", forKey: "RetroPet.showMode")
+            UserDefaults.standard.set("ear", forKey: "Mochi.showMode")
         }
         earItem.state = current == "ear" ? .on : .off
         modeMenu.addItem(hoverItem)
@@ -106,7 +106,7 @@ enum PetMenu {
         }
         menu.addItem(item("Rename…") { Dialogs.rename(engine) })
         menu.addItem(item("New pet…") { Dialogs.newPet(engine) })
-        menu.addItem(item("Quit RetroPet") { NSApp.terminate(nil) })
+        menu.addItem(item("Quit Mochi") { NSApp.terminate(nil) })
 
         if engine.devMode {
             menu.addItem(.separator())

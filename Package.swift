@@ -5,6 +5,6 @@ let package = Package(
     name: "Mochi",
     platforms: [.macOS(.v13)],
     targets: [
-        .executableTarget(name: "Mochi", path: "Sources/RetroPet")
+        .executableTarget(name: "Mochi", path: "Sources/Mochi")
     ]
 )

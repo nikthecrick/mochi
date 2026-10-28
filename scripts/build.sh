@@ -8,8 +8,8 @@ ROOT="$(pwd)"
 
 echo "==> swiftc release, arm64 + x86_64"
 mkdir -p .build/universal
-swiftc -O -target arm64-apple-macos13.0 Sources/RetroPet/*.swift -o .build/universal/Mochi-arm64
-swiftc -O -target x86_64-apple-macos13.0 Sources/RetroPet/*.swift -o .build/universal/Mochi-x86_64
+swiftc -O -target arm64-apple-macos13.0 Sources/Mochi/*.swift -o .build/universal/Mochi-arm64
+swiftc -O -target x86_64-apple-macos13.0 Sources/Mochi/*.swift -o .build/universal/Mochi-x86_64
 lipo -create -output .build/universal/Mochi .build/universal/Mochi-arm64 .build/universal/Mochi-x86_64
 lipo -info .build/universal/Mochi
 

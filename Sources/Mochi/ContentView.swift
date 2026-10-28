@@ -170,7 +170,7 @@ struct PetRootView: View {
     @State private var dropHot = false
     @State private var lastT: Double = 0
     @State private var eggDetail = false   // click the egg's temp badge -> details
-    @AppStorage("RetroPet.showMode") private var showMode = "hover"   // hover | ear
+    @AppStorage("Mochi.showMode") private var showMode = "hover"   // hover | ear
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.1)) { tl in

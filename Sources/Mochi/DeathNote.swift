@@ -1,7 +1,7 @@
 import Foundation
 import AppKit
 
-/// When the pet dies it is *really* dead: RetroPet leaves a death note
+/// When the pet dies it is *really* dead: Mochi leaves a death note
 /// (text + a sad little tombstone PNG) on the Desktop.
 enum DeathNote {
     static var directoryOverride: URL?   // tests redirect this
@@ -41,7 +41,7 @@ enum DeathNote {
           "I waited for you, and you didn't come.
            It really died. It is not coming back.
            Be there for your next one."
-                       -- RetroPet
+                       -- Mochi
 
           ________________________________
           This note was left by Mochi on
@@ -70,10 +70,10 @@ enum DeathNote {
 
 /// Prepared for later ("death means the app is gone" mode). OFF by default.
 /// Flip it later with:
-///   defaults write dev.tryouts.retpet.RetroPet RetroPet.selfDestruct -bool YES
+///   defaults write dev.tryouts.retpet.Mochi Mochi.selfDestruct -bool YES
 /// Then, on death, the .app bundle moves itself to the Trash.
 enum GrimReaper {
-    static let selfDestructDefaultsKey = "RetroPet.selfDestruct"
+    static let selfDestructDefaultsKey = "Mochi.selfDestruct"
 
     static var selfDestructEnabled: Bool {
         UserDefaults.standard.bool(forKey: selfDestructDefaultsKey)
