@@ -3,10 +3,12 @@ import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let engine = PetEngine()
-    private let sound = SoundBank()
+    private let brain  = BrainEngine()
+    private let sound  = SoundBank()
     private var panel: PetPanel?
     private var poolPanel: PetPanel?
     private var settingsPanel: PetPanel?
+    private var shopPanel: PetPanel?
     private var activity: NSObjectProtocol?
     private var keyMonitor: Any?
 
@@ -24,6 +26,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return event
         }
 
+        // Accessory apps have no Edit menu, so Cmd+V/C/X/A don't dispatch
+        // through the standard menu path. This monitor catches them before
+        // the system can beep and routes them directly to the first responder.
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.modifierFlags.contains(.command),
+                  let ch = event.charactersIgnoringModifiers else { return event }
+            switch ch {
+            case "v": if NSApp.sendAction(#selector(NSText.paste(_:)),     to: nil, from: nil) { return nil }
+            case "c": if NSApp.sendAction(#selector(NSText.copy(_:)),      to: nil, from: nil) { return nil }
+            case "x": if NSApp.sendAction(#selector(NSText.cut(_:)),       to: nil, from: nil) { return nil }
+            case "a": if NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) { return nil }
+            default:  break
+            }
+            return event
+        }
+
         engine.sound = sound
         engine.devMode = Set(CommandLine.arguments.dropFirst()).contains("--dev")
         engine.onDeath = { [weak self] model in
@@ -37,7 +55,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if let loaded = PetStore.load() {
-            engine.adopt(loaded: loaded)          // catch up decay while away (may die here)
+            let wasCocooned = loaded.cocooned
+            engine.adopt(loaded: loaded)          // sets lastTick=now when cocooned; no catch-up decay
+            if wasCocooned { engine.wakeFromCocoon() }
         } else {
             engine.newPet()                       // first launch: egg
         }
@@ -53,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settle: { [weak self] in self?.settleWindow() },
             popMenu: { [weak self] in self?.popupMenu() },
             onPlay: {},
+            onShop:  { [weak self] in self?.showShop() },
             moveWindow: { [weak self] dx, dy in self?.movePetWindow(dx: dx, dy: dy) }
         ))
         p.setFrame(defaultWindowFrame(), display: true)
@@ -62,6 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.start()
         if sound.musicOn { sound.applyMusic() }   // didSet doesn't fire during init
 
+        brain.pet = engine
+        brain.start()
+
         // restore a previously placed pool
         if engine.model.poolOwned == true { givePool(restore: true) }
 
@@ -69,7 +93,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         activity = ProcessInfo.processInfo.beginActivity(
             options: [.userInitiatedAllowingIdleSystemSleep],
             reason: "Mochi keeps ticking so the pet ages in real time")
+
+        // Deep sleep: when the screen or system sleeps, the pet hibernates.
+        // This keeps it alive overnight without needing constant attention.
+        let ws = NSWorkspace.shared.notificationCenter
+        ws.addObserver(self, selector: #selector(onScreenSleep),
+                       name: NSWorkspace.screensDidSleepNotification, object: nil)
+        ws.addObserver(self, selector: #selector(onScreenWake),
+                       name: NSWorkspace.screensDidWakeNotification, object: nil)
+        ws.addObserver(self, selector: #selector(onSystemSleep),
+                       name: NSWorkspace.willSleepNotification, object: nil)
+        ws.addObserver(self, selector: #selector(onSystemWake),
+                       name: NSWorkspace.didWakeNotification, object: nil)
+
+        // If the app was relaunched while in deep sleep, wake it now
+        // (the screen is clearly on if the user just launched the app).
+        engine.exitDeepSleep()
     }
+
+    @objc private func onScreenSleep(_ n: Notification) { engine.enterDeepSleep() }
+    @objc private func onScreenWake(_ n: Notification)  { engine.exitDeepSleep() }
+    @objc private func onSystemSleep(_ n: Notification) { engine.enterDeepSleep() }
+    @objc private func onSystemWake(_ n: Notification)  { engine.exitDeepSleep() }
 
     private func defaultWindowFrame() -> NSRect {
         let size = NSSize(width: 280, height: 240)
@@ -122,11 +167,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let p = settingsPanel {
             if p.isVisible { p.orderOut(nil); return }
             placeSettings(p)
-            p.orderFrontRegardless()
+            activateAndShow(p)
             return
         }
         let hosting = NSHostingView(rootView: SettingsCard(
             engine: engine,
+            brain: brain,
             sound: sound,
             onClose: { [weak self] in self?.settingsPanel?.orderOut(nil) },
             onFeedFile: { [weak self] in
@@ -158,7 +204,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         p.contentView = hosting
         settingsPanel = p
         placeSettings(p)
-        p.orderFrontRegardless()
+        activateAndShow(p)
+    }
+
+    /// Make the panel key so its text fields can receive first responder (paste, typing).
+    private func activateAndShow(_ p: PetPanel) {
+        NSApp.activate(ignoringOtherApps: true)
+        p.makeKeyAndOrderFront(nil)
     }
 
     private func placeSettings(_ p: PetPanel) {
@@ -167,6 +219,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hosting.invalidateIntrinsicContentSize()
         let size = hosting.fittingSize.width > 10 ? hosting.fittingSize : NSSize(width: 248, height: 420)
         var o = NSPoint(x: pet.frame.maxX + 14, y: pet.frame.maxY - size.height)
+        if let vis = NSScreen.main?.visibleFrame {
+            o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
+            o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
+        }
+        p.setFrame(NSRect(origin: o, size: size), display: true)
+    }
+
+    // MARK: - shop card (opens left of the pet from the right-ear tap)
+
+    private func showShop() {
+        if let p = shopPanel {
+            if p.isVisible { p.orderOut(nil); return }
+            placeShop(p)
+            activateAndShow(p)
+            return
+        }
+        let p = PetPanel.make()
+        p.contentView = NSHostingView(rootView: ShopCard(
+            engine: engine,
+            onClose: { [weak self] in self?.shopPanel?.orderOut(nil) }
+        ))
+        shopPanel = p
+        placeShop(p)
+        activateAndShow(p)
+    }
+
+    private func placeShop(_ p: PetPanel) {
+        guard let pet = panel else { return }
+        let size = NSSize(width: 248, height: 440)
+        var o = NSPoint(x: pet.frame.minX - size.width - 14,
+                        y: pet.frame.maxY - size.height)
         if let vis = NSScreen.main?.visibleFrame {
             o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
             o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
@@ -302,6 +385,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        engine.save()
+        engine.enterCocoon()
     }
 }

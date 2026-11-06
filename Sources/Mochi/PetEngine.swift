@@ -38,6 +38,8 @@ struct PetModel: Codable {
     var deathCause: String?
     var everHatched: Bool = false
     var borrowedFrom: String?     // prepared: set when a borrowed pet is imported
+    var deepSleep: Bool = false   // true while in screen/system sleep hibernation
+    var brainInstalled: Bool = false
     var filesEaten: Int = 0
     var bytesEaten: Int64 = 0
     var legsGrown: Bool?          // optional: old saves decode without it
@@ -54,6 +56,7 @@ struct PetModel: Codable {
     var lastMealAt: Date?
     var windowX: Double = -1
     var windowY: Double = -1
+    var cocooned: Bool = false    // set on clean quit; cleared on next launch
 }
 
 /// Tunable life-rates: deliberately slow, real-time decay. A pet dies only
@@ -136,6 +139,10 @@ final class PetEngine: ObservableObject {
     @Published var inflateUntil: Date?    // balloon inflate -> float
     // Growing: size follows age; a springy bounce plays at milestones.
     @Published var growBounceUntil: Date?
+    @Published var speechBubble: String? = nil
+    @Published var speechBubbleUntil: Date? = nil
+    @Published var brainThinking: Bool = false
+    @Published var cocoonWakeUntil: Date? = nil  // non-nil while waking from cocoon
     private var lastScaleMark = -1.0
     // Incubation: live CPU temp shown on the shell; warmth speeds hatching.
     @Published var eggTemp: Double = 40
@@ -254,6 +261,7 @@ final class PetEngine: ObservableObject {
         advance(to: now)
         advancePoopPhase()
         advanceSwim()
+        advanceCocoon()
         maybeGrow()
         maybeWalk()
         maybeJump()
@@ -261,7 +269,27 @@ final class PetEngine: ObservableObject {
         maybeTar()
         maybePlay()
         pruneParticles()
+        pruneSpeechBubble()
         autoSave()
+    }
+
+    private func advanceCocoon() {
+        guard let until = cocoonWakeUntil, now >= until else { return }
+        cocoonWakeUntil = nil
+        spawn(.sparkle, 6)
+        sound?.play(.hatch)
+    }
+
+    private func pruneSpeechBubble() {
+        guard let until = speechBubbleUntil, now >= until, speechBubble != nil else { return }
+        withAnimation(.easeOut(duration: 0.5)) { speechBubble = nil }
+        speechBubbleUntil = nil
+    }
+
+    /// Brain calls this to send a message to the user via the speech bubble.
+    func speak(_ text: String, duration: Double = 9) {
+        withAnimation(.easeOut(duration: 0.3)) { speechBubble = text }
+        speechBubbleUntil = now.addingTimeInterval(duration)
     }
 
     /// Little growing animation when enough size was gained since the last one.
@@ -294,23 +322,30 @@ final class PetEngine: ObservableObject {
         guard !model.dead else { return }
 
         let asleep = model.asleep
-        model.hunger = max(0, model.hunger - PetRates.hungerPerSec * (asleep ? 0.5 : 1) * dt)
-        model.happiness = max(0, model.happiness - PetRates.happyPerSec * (asleep ? 0.25 : 1) * dt)
+        let deep = model.deepSleep
+        // Deep sleep: near-zero metabolism — the pet barely ages overnight.
+        let hungerMult = deep ? 0.08 : (asleep ? 0.5 : 1.0)
+        let happyMult  = deep ? 0.08 : (asleep ? 0.25 : 1.0)
+        model.hunger = max(0, model.hunger - PetRates.hungerPerSec * hungerMult * dt)
+        model.happiness = max(0, model.happiness - PetRates.happyPerSec * happyMult * dt)
         if asleep {
-            model.energy = min(100, model.energy + PetRates.energyGainPerSec * dt)
-            if model.energy >= 100 { model.asleep = false }   // sleeps it off, silent
+            let energyRate = deep ? PetRates.energyGainPerSec * 0.2 : PetRates.energyGainPerSec
+            model.energy = min(100, model.energy + energyRate * dt)
+            // Don't auto-wake during deep sleep — the screen controls that.
+            if model.energy >= 100 && !deep { model.asleep = false }
         } else {
             model.energy = max(0, model.energy - PetRates.energyPerSec * dt)
             if model.energy <= 0 { model.asleep = true }   // exhausted pets pass out
         }
 
-        if model.hunger <= 8 || model.happiness <= 8 {
+        // Neglect never accumulates during deep sleep — hibernation keeps the pet safe.
+        if !deep && (model.hunger <= 8 || model.happiness <= 8) {
             let both = model.hunger <= 8 && model.happiness <= 8
             model.neglect += dt * (both ? 3 : 1.5)
             if model.neglect >= PetRates.neglectLimit {
                 die(cause: both ? "starvation" : "loneliness")
             }
-        } else {
+        } else if !deep {
             model.neglect = max(0, model.neglect - dt)
         }
         // chub slowly burns off by itself; only playing really works it off
@@ -806,6 +841,7 @@ final class PetEngine: ObservableObject {
         guard !model.dead, model.everHatched else { return }
         if model.asleep {
             model.asleep = false
+            model.deepSleep = false
             sound?.play(.wake)
         } else {
             model.asleep = true
@@ -815,12 +851,64 @@ final class PetEngine: ObservableObject {
         save()
     }
 
+    /// Called when the screen or system goes to sleep: near-zero metabolism.
+    func enterDeepSleep() {
+        guard !model.dead, model.everHatched, !model.deepSleep else { return }
+        model.deepSleep = true
+        model.asleep = true
+        walkUntil = nil
+        swimUntil = nil
+        sound?.play(.sleep)
+        save()
+        print("Mochi: \(model.name) hibernates — screen off")
+    }
+
+    /// Called when the screen or system wakes: resume normal life.
+    func exitDeepSleep() {
+        guard model.deepSleep else { return }
+        model.deepSleep = false
+        model.asleep = false
+        spawn(.sparkle, 2)
+        sound?.play(.wake)
+        save()
+        print("Mochi: \(model.name) wakes from hibernation — welcome back!")
+    }
+
+    // MARK: - Cocoon (clean-quit persistence)
+
+    var cocoonWaking: Bool { cocoonWakeUntil.map { now < $0 } ?? false }
+    var cocoonPhase: Double {
+        guard let u = cocoonWakeUntil else { return 1.0 }
+        let total = 3.0
+        let remaining = u.timeIntervalSince(now)
+        return max(0, min(1, 1 - remaining / total))
+    }
+
+    /// Called on clean app quit — freeze stats so the pet doesn't die while away.
+    func enterCocoon() {
+        model.cocooned = true
+        model.lastTick = now   // next launch: dt = 0, no catch-up decay
+        save()
+        print("Mochi: \(model.name) enters cocoon — see you soon!")
+    }
+
+    /// Called on relaunch after a cocooned save — plays the wake animation.
+    func wakeFromCocoon() {
+        model.asleep = false
+        model.deepSleep = false
+        cocoonWakeUntil = now.addingTimeInterval(3.0)
+        spawn(.sparkle, 4)
+        sound?.play(.wake)
+        print("Mochi: \(model.name) wakes from cocoon — welcome back!")
+    }
+
     func die(cause: String) {
         guard !model.dead else { return }
         model.dead = true
         model.diedAt = now
         model.deathCause = cause
         model.asleep = false
+        model.deepSleep = false
         particles = []
         eatUntil = nil
         happyUntil = nil
@@ -893,6 +981,12 @@ final class PetEngine: ObservableObject {
         if model.breedName == nil { model.breedName = Breed.random().name }
         if model.everHatched == false, model.eggProgress == nil {
             model.eggProgress = min(max(0, age), PetRates.eggSeconds * 0.5)   // old egg: half credit
+        }
+        // If the pet was cocooned on quit, reset lastTick to now so advance(to:)
+        // computes dt ≈ 0 — no catch-up decay while the app was closed.
+        if model.cocooned {
+            model.lastTick = now
+            model.cocooned = false
         }
         pile = nil
         pileUntil = nil

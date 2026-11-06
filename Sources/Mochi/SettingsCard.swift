@@ -6,6 +6,7 @@ import AppKit
 /// Retro (pixel headers) x modern (glass, pills, switches).
 struct SettingsCard: View {
     @ObservedObject var engine: PetEngine
+    @ObservedObject var brain: BrainEngine
     @ObservedObject var sound: SoundBank
     var onClose: () -> Void
     var onFeedFile: () -> Void
@@ -19,6 +20,14 @@ struct SettingsCard: View {
     @AppStorage(PetRates.digestDefaultsKey) private var digest: Double = 300
     @AppStorage(PetRates.walkChanceDefaultsKey) private var walkChance: Double = PetRates.defaultWalkChance
     @AppStorage("Mochi.showMode") private var showMode = "ear"   // hover | ear
+
+    // Brain config (read by BrainEngine at think-time via the same UserDefaults keys)
+    @AppStorage(BrainKeys.apiKey)         private var brainApiKey    = ""
+    @AppStorage(BrainKeys.endpoint)       private var brainEndpoint  = ""
+    @AppStorage(BrainKeys.modelID)        private var brainModel     = ""
+    @AppStorage(BrainKeys.intervalMin)    private var brainInterval  = BrainEngine.defaultInterval
+    @AppStorage(BrainKeys.bubbleFontSize) private var bubbleFontSize = 14.0
+    @State private var showKey = false
 
     private let w: CGFloat = 248
 
@@ -66,6 +75,8 @@ struct SettingsCard: View {
                 poolRow
             }
 
+            if engine.model.brainInstalled { brainSection }
+
             section("PET") {
                 row("pencil", "Rename…", color: .gray) { Dialogs.rename(engine) }
                 row("sparkles", "New pet…", color: .pink) { Dialogs.newPet(engine) }
@@ -110,6 +121,143 @@ struct SettingsCard: View {
     }
 
     // MARK: pieces
+
+    @ViewBuilder
+    private var brainSection: some View {
+        section("BRAIN") {
+            // API key — uses native NSTextField so paste (Cmd+V) works in the floating panel
+            HStack(spacing: 8) {
+                Image(systemName: "key.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.purple)
+                    .frame(width: 16)
+                PasteableTextField(
+                    text: $brainApiKey,
+                    placeholder: "API key (openrouter.ai / local)",
+                    isSecure: !showKey
+                )
+                .frame(maxWidth: .infinity)
+                Button { showKey.toggle() } label: {
+                    Image(systemName: showKey ? "eye.slash" : "eye")
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.35))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(0.06)))
+
+            // Endpoint
+            HStack(spacing: 8) {
+                Image(systemName: "link")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.blue)
+                    .frame(width: 16)
+                PasteableTextField(
+                    text: $brainEndpoint,
+                    placeholder: BrainEngine.defaultEndpoint
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(0.06)))
+
+            // Model
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.yellow)
+                    .frame(width: 16)
+                PasteableTextField(
+                    text: $brainModel,
+                    placeholder: BrainEngine.defaultModel
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(0.06)))
+
+            // Think interval
+            HStack(spacing: 0) {
+                Text("Think every")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.45))
+                    .padding(.trailing, 7)
+                pills([("2 min", 2.0), ("5 min", 5.0), ("15 min", 15.0), ("30 min", 30.0)],
+                      $brainInterval)
+            }
+
+            // Speech bubble font size
+            HStack(spacing: 0) {
+                Text("Bubble text")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.45))
+                    .padding(.trailing, 7)
+                pills([("S", 10.0), ("M", 14.0), ("L", 18.0), ("XL", 22.0)], $bubbleFontSize)
+            }
+
+            // Connection status + test button
+            HStack(spacing: 7) {
+                connectionDot
+                connectionLabel
+                Spacer()
+                Button {
+                    Task { await brain.testConnection() }
+                } label: {
+                    Text(brain.connectionStatus == .testing ? "Testing…" : "Test")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.white.opacity(0.1)))
+                }
+                .buttonStyle(.plain)
+                .disabled(brain.connectionStatus == .testing || brainApiKey.isEmpty)
+            }
+
+            Text("Get a free key at openrouter.ai · or point to a local server")
+                .font(.system(size: 8))
+                .foregroundColor(.white.opacity(0.3))
+        }
+    }
+
+    @ViewBuilder
+    private var connectionDot: some View {
+        switch brain.connectionStatus {
+        case .unknown:
+            Circle().fill(Color.white.opacity(0.2)).frame(width: 7, height: 7)
+        case .testing:
+            Circle().fill(Color.yellow).frame(width: 7, height: 7)
+                .opacity(1)
+                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true),
+                           value: brain.connectionStatus)
+        case .ok:
+            Circle().fill(Color.green).frame(width: 7, height: 7)
+        case .failed:
+            Circle().fill(Color.red).frame(width: 7, height: 7)
+        }
+    }
+
+    @ViewBuilder
+    private var connectionLabel: some View {
+        switch brain.connectionStatus {
+        case .unknown:
+            Text("Not tested")
+                .font(.system(size: 9)).foregroundColor(.white.opacity(0.3))
+        case .testing:
+            Text("Connecting…")
+                .font(.system(size: 9)).foregroundColor(.yellow.opacity(0.8))
+        case .ok(let model):
+            Text(model)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(.green.opacity(0.9))
+                .lineLimit(1).truncationMode(.middle)
+        case .failed(let msg):
+            Text(msg)
+                .font(.system(size: 9)).foregroundColor(.red.opacity(0.85))
+                .lineLimit(2)
+        }
+    }
 
     private var header: some View {
         HStack(alignment: .top, spacing: 8) {

@@ -22,6 +22,26 @@ final class PetPanel: NSPanel {
         frameRect
     }
 
+    // Mochi runs as an .accessory app with no menu bar and no Edit menu.
+    // Without a Paste menu item, Cmd+V never reaches the first responder
+    // through the standard menu dispatch path and the system beeps.
+    // We intercept the common text-editing shortcuts here and send them
+    // directly into the responder chain so text fields work normally.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.modifierFlags.contains(.command),
+              let ch = event.charactersIgnoringModifiers else {
+            return super.performKeyEquivalent(with: event)
+        }
+        switch ch {
+        case "v": if NSApp.sendAction(#selector(NSText.paste(_:)),      to: nil, from: nil) { return true }
+        case "c": if NSApp.sendAction(#selector(NSText.copy(_:)),       to: nil, from: nil) { return true }
+        case "x": if NSApp.sendAction(#selector(NSText.cut(_:)),        to: nil, from: nil) { return true }
+        case "a": if NSApp.sendAction(#selector(NSText.selectAll(_:)),  to: nil, from: nil) { return true }
+        default:  break
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     static func make() -> PetPanel {
         let p = PetPanel(
             contentRect: NSRect(x: 0, y: 0, width: 280, height: 240),

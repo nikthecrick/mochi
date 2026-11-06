@@ -165,6 +165,7 @@ struct PetRootView: View {
     var settle: () -> Void
     var popMenu: () -> Void
     var onPlay: () -> Void = {}
+    var onShop: () -> Void = {}
     var moveWindow: (Double, Double) -> Void          // wander: move the panel itself
 
     @State private var dropHot = false
@@ -222,6 +223,26 @@ struct PetRootView: View {
                 if mood == .egg && eggDetail { eggDetailCard }
                 if mood != .egg && !engine.model.dead { needPods(t: t) }
                 if dropHot { feedMeHint }
+                // Cocoon wake animation (overlay on top of the pet)
+                if engine.cocoonWaking {
+                    CocoonOverlay(phase: engine.cocoonPhase, scale: scale)
+                        .zIndex(40)
+                        .transition(.opacity)
+                }
+                // Brain speech bubble / thinking indicator
+                if let bubble = engine.speechBubble {
+                    SpeechBubble(text: bubble)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .padding(.top, 6)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .zIndex(50)
+                } else if engine.brainThinking {
+                    SpeechBubble(text: "...", thinking: true)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .padding(.top, 6)
+                        .transition(.opacity)
+                        .zIndex(50)
+                }
                 let showControls = engine.controlsPinned
                     || (showMode == "ear" ? engine.earOpen : engine.hover)
                 if showControls {
@@ -292,6 +313,20 @@ struct PetRootView: View {
                 .padding(.top, 3 * scale - 15)
             }
         }
+        .overlay(alignment: .topTrailing) {         // right-ear hot spot: shop (unlocked with legs)
+            if engine.hasLegs && mood != .egg && mood != .dead {
+                EarClickArea(
+                    onDrag: { dx, dy in dragDelta(dx, dy) },
+                    onRelease: { moved in
+                        if moved { settle() } else { onShop() }
+                    },
+                    onRightClick: { popMenu() }
+                )
+                .frame(width: 30, height: 30)
+                .padding(.trailing, 5.5 * scale - 15)
+                .padding(.top, 3 * scale - 15)
+            }
+        }
         .scaleEffect(dropHot ? 1.14 : 1)
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: dropHot)
         .dropDestination(for: URL.self) { urls, _ in
@@ -332,12 +367,22 @@ struct PetRootView: View {
     /// or the subtle first-time left-ear click hint. Masked to the left ear.
     @ViewBuilder
     private func earGlow(frame: Frame, t: Double) -> some View {
+        // Left ear: yellow glow on file feed or first-time hint
         if engine.glowActive || engine.earHint {
             let pulse = 0.3 + 0.25 * (0.5 + 0.5 * sin(t * 7))
             PixelSpriteView(frame: frame, scale: scale, tint: Pal.color("Y"))
                 .blur(radius: 2.5)
                 .opacity(pulse)
                 .mask(LeftEarGlowMask())
+                .allowsHitTesting(false)
+        }
+        // Right ear: purple shop hint until brain is installed
+        if engine.hasLegs && !engine.model.brainInstalled {
+            let pulse = 0.18 + 0.14 * (0.5 + 0.5 * sin(t * 4.5))
+            PixelSpriteView(frame: frame, scale: scale, tint: .purple)
+                .blur(radius: 2.5)
+                .opacity(pulse)
+                .mask(RightEarGlowMask())
                 .allowsHitTesting(false)
         }
     }
@@ -681,6 +726,198 @@ private struct LeftEarGlowMask: Shape {
         p.addLine(to: CGPoint(x: rx + rw, y: ry + rh))
         p.addLine(to: CGPoint(x: rx, y: ry + rh))
         p.closeSubpath()
+        return p
+    }
+}
+
+/// Mask shape: the right-ear glow region (right ~35% width, top ~35% height).
+private struct RightEarGlowMask: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        var p = Path()
+        let rx = rect.minX + w * 0.45, ry = rect.minY, rw = w * 0.35, rh = h * 0.35
+        p.move(to: CGPoint(x: rx, y: ry))
+        p.addLine(to: CGPoint(x: rx + rw, y: ry))
+        p.addLine(to: CGPoint(x: rx + rw, y: ry + rh))
+        p.addLine(to: CGPoint(x: rx, y: ry + rh))
+        p.closeSubpath()
+        return p
+    }
+}
+
+// MARK: - Speech bubble (brain output)
+
+struct SpeechBubble: View {
+    let text: String
+    var thinking = false
+    @AppStorage(BrainKeys.bubbleFontSize) private var fontSize: Double = 14
+
+    var body: some View {
+        VStack(spacing: 0) {
+            bubbleBody
+            bubbleTail
+        }
+        .frame(maxWidth: 180)
+        .allowsHitTesting(false)
+    }
+
+    private var bubbleBody: some View {
+        Group {
+            if thinking {
+                thinkingDots
+            } else {
+                Text(text)
+                    .font(PixelFont.font(fontSize))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(6)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .shadow(color: .black.opacity(0.55), radius: 1, y: 1)
+            }
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 11)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(Color(red: 0.58, green: 0.42, blue: 1.0).opacity(0.14))
+                )
+        )
+        .overlay(
+            // Outer stroke
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.white.opacity(0.35), lineWidth: 1.2)
+        )
+        .overlay(
+            // Inner highlight — the "liquid glass" top-edge shine
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.45), Color.white.opacity(0.0)],
+                        startPoint: .top, endPoint: .center
+                    ),
+                    lineWidth: 1
+                )
+                .padding(1)
+        )
+        .shadow(color: Color(red: 0.5, green: 0.3, blue: 1.0).opacity(0.28), radius: 14, y: 5)
+        .shadow(color: .black.opacity(0.32), radius: 5, y: 3)
+    }
+
+    // Three square pixel dots that chase each other — fits the retro sprite aesthetic.
+    private var thinkingDots: some View {
+        TimelineView(.animation(minimumInterval: 0.35)) { tl in
+            let phase = Int(tl.date.timeIntervalSinceReferenceDate / 0.35) % 3
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(Color.white.opacity(phase == i ? 0.95 : 0.22))
+                        .frame(width: 5, height: 5)
+                }
+            }
+            .padding(.vertical, 3)
+        }
+    }
+
+    // Pixel-stepped tail — three rows, each narrower, like a Mochi sprite pixel.
+    private var bubbleTail: some View {
+        BubbleTail()
+            .fill(Color.white.opacity(0.22))
+            .frame(width: 18, height: 11)
+    }
+}
+
+private struct BubbleTail: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        let col = w / 3   // one pixel-column width
+        var p = Path()
+        // Row 1 — full width
+        p.addRect(CGRect(x: 0,     y: 0,       width: w,     height: h / 3))
+        // Row 2 — one column narrower on each side
+        p.addRect(CGRect(x: col,   y: h / 3,   width: col,   height: h / 3))
+        // Row 3 — single centre column
+        p.addRect(CGRect(x: col,   y: 2 * h/3, width: col,   height: h / 3))
+        return p
+    }
+}
+
+// MARK: - Cocoon wake animation
+
+/// Drawn over the pet sprite while waking from a cocooned quit.
+/// phase 0 = still cocooned, phase 1 = fully awake.
+struct CocoonOverlay: View {
+    let phase: Double
+    let scale: CGFloat
+
+    private var shellOpacity: Double {
+        phase < 0.65 ? 1.0 : max(0, 1.0 - (phase - 0.65) / 0.35)
+    }
+    private var crackOpacity: Double {
+        phase > 0.35 ? min(1.0, (phase - 0.35) / 0.3) : 0.0
+    }
+    private var glowRadius: CGFloat {
+        phase > 0.65 ? CGFloat((phase - 0.65) / 0.35) * 18 : 4
+    }
+
+    var body: some View {
+        let w = scale * 19
+        let h = scale * 21
+        ZStack {
+            // Warm silk cocoon shell
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color(red: 0.98, green: 0.93, blue: 0.76).opacity(0.80),
+                            Color(red: 0.85, green: 0.74, blue: 0.52).opacity(0.55),
+                        ],
+                        center: .center, startRadius: 0, endRadius: max(w, h) / 2
+                    )
+                )
+                .overlay(
+                    Ellipse().stroke(Color.white.opacity(0.55), lineWidth: 1.5)
+                )
+                .blur(radius: phase > 0.6 ? CGFloat((phase - 0.6) / 0.4) * 12 : 0)
+                .opacity(shellOpacity)
+
+            // Crack lines appear in phase 0.35+
+            if crackOpacity > 0 {
+                CocoonCracks()
+                    .stroke(Color.white.opacity(0.75), lineWidth: 1.2)
+                    .opacity(crackOpacity)
+            }
+
+            // Warm outer glow (intensifies as shell dissolves)
+            Ellipse()
+                .fill(Color(red: 1.0, green: 0.88, blue: 0.5).opacity(0.18 * shellOpacity))
+                .blur(radius: glowRadius)
+        }
+        .frame(width: w, height: h)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct CocoonCracks: Shape {
+    func path(in rect: CGRect) -> Path {
+        let cx = rect.midX, cy = rect.midY
+        var p = Path()
+        // A few jagged cracks radiating from the centre-top
+        p.move(to: CGPoint(x: cx,      y: cy - 8))
+        p.addLine(to: CGPoint(x: cx - 14, y: cy - 32))
+        p.addLine(to: CGPoint(x: cx - 8,  y: cy - 42))
+
+        p.move(to: CGPoint(x: cx,      y: cy - 8))
+        p.addLine(to: CGPoint(x: cx + 18, y: cy - 28))
+        p.addLine(to: CGPoint(x: cx + 10, y: cy - 44))
+
+        p.move(to: CGPoint(x: cx,      y: cy + 2))
+        p.addLine(to: CGPoint(x: cx - 22, y: cy + 8))
+
+        p.move(to: CGPoint(x: cx,      y: cy + 2))
+        p.addLine(to: CGPoint(x: cx + 16, y: cy + 14))
         return p
     }
 }
