@@ -88,11 +88,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Bring pool in front when swimming starts so its stone wall covers Mochi's feet;
         // return pet to front when swim ends so the controls/bubbles stay reachable.
+        // While swimming: raise pool above pet so its stone wall always covers Mochi's feet,
+        // even after a drag brings the pet panel to front within its own level.
         engine.onSwimStart = { [weak self] in
-            DispatchQueue.main.async { self?.poolPanel?.orderFrontRegardless() }
+            DispatchQueue.main.async {
+                self?.poolPanel?.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
+                self?.poolPanel?.orderFrontRegardless()
+            }
         }
         engine.onSwimEnd = { [weak self] in
-            DispatchQueue.main.async { self?.panel?.orderFrontRegardless() }
+            DispatchQueue.main.async {
+                self?.poolPanel?.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+                self?.panel?.orderFrontRegardless()
+            }
         }
 
         // restore a previously placed pool
