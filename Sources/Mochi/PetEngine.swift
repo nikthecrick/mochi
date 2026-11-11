@@ -832,12 +832,12 @@ final class PetEngine: ObservableObject {
         save()
     }
 
-    /// Easter egg: 3 quick clicks on the pet -> balloon inflate + float.
+    /// Easter egg: 10 quick clicks on the pet -> balloon inflate + float.
     func easterEggClick() {
         guard !model.dead, model.everHatched, !model.asleep else { return }
         guard !inflateActive else { return }
         clickCount += 1
-        if clickCount >= 3 { startInflate() }
+        if clickCount >= 10 { startInflate() }
     }
 
     func startInflate() {
