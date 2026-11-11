@@ -151,6 +151,7 @@ final class PetEngine: ObservableObject {
     // Swimming: when it strolls to its pool and takes a dip.
     @Published var swimUntil: Date?
     @Published var walkToPool = false
+    @Published var poolSplashUntil: Date? = nil  // non-nil while pool splash rings play
     /// Current pet window centre (screen coords), kept fresh by the app.
     var petPos: (x: Double, y: Double)?
     /// Where pooped files get restored to (default: Desktop).
@@ -208,6 +209,7 @@ final class PetEngine: ObservableObject {
     var poopActive: Bool { poopUntil.map { now < $0 } ?? false }
     var jumpActive: Bool { jumpUntil.map { now < $0 } ?? false }
     var swimActive: Bool { swimUntil.map { now < $0 } ?? false }
+    var poolSplashActive: Bool { poolSplashUntil.map { now < $0 } ?? false }
     var growBounceActive: Bool { growBounceUntil.map { now < $0 } ?? false }
     var playActive: Bool { playUntil.map { now < $0 } ?? false }
     var inflateActive: Bool { inflateUntil.map { now < $0 } ?? false }
@@ -265,6 +267,8 @@ final class PetEngine: ObservableObject {
         advanceSwim()
         advanceCocoon()
         advanceMagicAura()
+        advancePoolSplash()
+        advanceSwimHappy()
         maybeGrow()
         maybeWalk()
         maybeJump()
@@ -286,6 +290,16 @@ final class PetEngine: ObservableObject {
     private func advanceMagicAura() {
         guard let until = magicAuraUntil, now >= until else { return }
         magicAuraUntil = nil
+    }
+
+    private func advancePoolSplash() {
+        guard let until = poolSplashUntil, now >= until else { return }
+        poolSplashUntil = nil
+    }
+
+    private func advanceSwimHappy() {
+        guard swimActive, Double.random(in: 0..<1) < 0.07 else { return }
+        spawn(.heart, 1)
     }
 
     private func pruneSpeechBubble() {
@@ -448,8 +462,10 @@ final class PetEngine: ObservableObject {
     func startSwim() {
         walkUntil = nil
         walkToPool = false
-        swimUntil = now.addingTimeInterval(Double.random(in: 7...14))
+        swimUntil = now.addingTimeInterval(Double.random(in: 8...16))
         model.happiness = min(100, model.happiness + 8)
+        poolSplashUntil = now.addingTimeInterval(1.2)   // pool shows splash rings
+        spawn(.sparkle, 2)                              // Mochi: splash excitement
         print("Mochi: \(model.name) is taking a dip in the pool")
         sound?.play(.sleep)   // whoosh: dive
         save()
@@ -458,10 +474,13 @@ final class PetEngine: ObservableObject {
     private func advanceSwim() {
         guard let until = swimUntil, now >= until, !swimActive else { return }
         swimUntil = nil
+        model.happiness = min(100, model.happiness + 5)  // refreshed bonus
+        poolSplashUntil = now.addingTimeInterval(1.2)    // exit splash
         print("Mochi: \(model.name) got out of the pool, refreshed")
         sound?.play(.wake)
-        spawn(.sparkle, 3)
-        // walk away from the edge a little, then carry on as usual
+        spawn(.heart, 2)     // happy after the dip
+        spawn(.sparkle, 2)
+        // walk away from the pool a little
         walkDirX = Bool.random() ? 1 : -1
         walkDirY = 0
         walkUntil = now.addingTimeInterval(3)

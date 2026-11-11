@@ -2,21 +2,26 @@ import SwiftUI
 import AppKit
 
 /// The Mochi Shop — opened from the right-ear hotspot (unlocks with legs).
-/// For the beta, one item: the Brain.
+/// Two tabs: SHOP (upgrades) and GADGETS (physical items for the desktop).
 struct ShopCard: View {
     @ObservedObject var engine: PetEngine
     var onClose: () -> Void
+    var onGivePool: () -> Void = {}
+    var onRemovePool: () -> Void = {}
+
+    @State private var tab: ShopTab = .shop
 
     private let w: CGFloat = 248
+
+    enum ShopTab { case shop, gadgets }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             shopHeader
-            section("AVAILABLE") { BrainItem(engine: engine) }
-            section("COMING SOON") {
-                lockedItem(icon: "globe",    name: "WEB SENSE", desc: "Let \(engine.model.name) browse the web")
-                lockedItem(icon: "waveform", name: "VOICE",     desc: "Give \(engine.model.name) a voice")
-                lockedItem(icon: "sparkles", name: "SKILLS",    desc: "More abilities, coming soon…")
+            tabPicker
+            switch tab {
+            case .shop:    shopContent
+            case .gadgets: gadgetsContent
             }
         }
         .padding(14)
@@ -44,6 +49,29 @@ struct ShopCard: View {
         }
     }
 
+    // MARK: – sections
+
+    @ViewBuilder
+    private var shopContent: some View {
+        section("AVAILABLE") { BrainItem(engine: engine) }
+        section("COMING SOON") {
+            lockedItem(icon: "globe",    name: "WEB SENSE", desc: "Let \(engine.model.name) browse the web")
+            lockedItem(icon: "waveform", name: "VOICE",     desc: "Give \(engine.model.name) a voice")
+            lockedItem(icon: "sparkles", name: "SKILLS",    desc: "More abilities, coming soon…")
+        }
+    }
+
+    @ViewBuilder
+    private var gadgetsContent: some View {
+        section("GADGETS") {
+            PoolItem(engine: engine, onGive: onGivePool, onRemove: onRemovePool)
+        }
+        section("COMING SOON") {
+            lockedItem(icon: "moon.stars", name: "COZY BED",   desc: "A proper bed for deeper sleep")
+            lockedItem(icon: "leaf",       name: "SNACK TREE", desc: "Auto-feed snacks at a schedule")
+        }
+    }
+
     // MARK: – pieces
 
     private var shopHeader: some View {
@@ -63,6 +91,29 @@ struct ShopCard: View {
                 .background(Capsule().fill(Color.white.opacity(0.08)))
         }
         .padding(.vertical, 2)
+    }
+
+    private var tabPicker: some View {
+        HStack(spacing: 4) {
+            tabButton("SHOP", .shop)
+            tabButton("GADGETS", .gadgets)
+            Spacer()
+        }
+    }
+
+    private func tabButton(_ label: String, _ t: ShopTab) -> some View {
+        let on = tab == t
+        return Button { withAnimation(.easeOut(duration: 0.15)) { tab = t } } label: {
+            Text(label)
+                .font(PixelFont.font(6))
+                .foregroundColor(on ? .black : .white.opacity(0.55))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule().fill(on ? shopPurple : Color.white.opacity(0.07))
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
@@ -184,5 +235,90 @@ private struct BrainItem: View {
                 .foregroundColor(.white)
         }
         .shadow(color: .purple.opacity(0.5), radius: 5)
+    }
+}
+
+// MARK: – Pool item card
+
+private struct PoolItem: View {
+    @ObservedObject var engine: PetEngine
+    var onGive: () -> Void
+    var onRemove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                poolIcon
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("POOL")
+                            .font(PixelFont.font(8))
+                            .foregroundColor(.white)
+                        if engine.model.poolOwned == true {
+                            Text("PLACED")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundColor(Color(red: 0.5, green: 0.85, blue: 1.0))
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Capsule().fill(Color.cyan.opacity(0.25)))
+                        }
+                    }
+                    Text("A pixel pond \(engine.model.name) will visit for a dip.")
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+            }
+
+            if engine.hasGadget {
+                Text("Drag it anywhere on your desktop. \(engine.model.name) will stroll over whenever they feel like a swim.")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    Spacer()
+                    if engine.model.poolOwned == true {
+                        Button { onRemove() } label: {
+                            Text("REMOVE")
+                                .font(PixelFont.font(7))
+                                .foregroundColor(.white.opacity(0.75))
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(Capsule().fill(Color.white.opacity(0.1)))
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button { onGive() } label: {
+                            Text("PLACE POOL")
+                                .font(PixelFont.font(7))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(Capsule().fill(Color(red: 0.5, green: 0.85, blue: 1.0)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            } else {
+                Text("Keep feeding \(engine.model.name) to unlock the gadget stage.")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.42))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.cyan.opacity(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(
+            engine.hasGadget ? Color.cyan.opacity(0.28) : Color.white.opacity(0.08)))
+    }
+
+    private var poolIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.22, green: 0.52, blue: 0.88),
+                             Color(red: 0.14, green: 0.36, blue: 0.72)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 38, height: 38)
+            PixelSpriteView(frame: .pool, scale: 2.0)
+        }
+        .shadow(color: Color.cyan.opacity(0.4), radius: 5)
     }
 }

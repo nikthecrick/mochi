@@ -1035,7 +1035,7 @@ struct IconButtonStyle: ButtonStyle {
 }
 
 
-// MARK: - Pool (gadget stage: a little pixel pond you can park anywhere)
+// MARK: - Pool (gadget stage: a pixel pond you can park anywhere on the desktop)
 
 struct PoolRootView: View {
     @ObservedObject var engine: PetEngine
@@ -1043,15 +1043,35 @@ struct PoolRootView: View {
     var settle: () -> Void
     var popMenu: () -> Void
 
+    private let poolScale: CGFloat = 9   // 16 * 9 = 144 px sprite
+    private let panelW: CGFloat = 164
+    private let panelH: CGFloat = 150
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.4)) { tl in
+        TimelineView(.animation(minimumInterval: 0.08)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
             ZStack {
-                PixelSpriteView(frame: .pool, scale: 6)
-                    .shadow(color: .black.opacity(0.25), radius: 4, y: 3)
-                    .opacity(engine.swimActive ? 1.0 : 0.95)
-                    .scaleEffect(Int(tl.date.timeIntervalSinceReferenceDate * 2) % 2 == 0 && engine.swimActive ? 1.03 : 1)
+                // Base pool sprite
+                PixelSpriteView(frame: .pool, scale: poolScale)
+                    .shadow(color: Color(red: 0.2, green: 0.5, blue: 1.0).opacity(0.4),
+                            radius: 10, y: 5)
+                    .opacity(0.97)
+
+                // Shimmer overlay while swimming — faint bright pulsing layer
+                if engine.swimActive {
+                    let shimmer = 0.08 + 0.06 * sin(t * 4.5)
+                    PixelSpriteView(frame: .pool, scale: poolScale)
+                        .opacity(shimmer)
+                        .blur(radius: 1.2)
+                        .blendMode(.screen)
+                }
+
+                // Expanding splash rings on entry/exit
+                if engine.poolSplashActive {
+                    splashRings(t: t)
+                }
             }
-            .frame(width: 110, height: 110)
+            .frame(width: panelW, height: panelH)
             .contentShape(Rectangle())
             .overlay(
                 DragArea(
@@ -1061,6 +1081,22 @@ struct PoolRootView: View {
                 )
             )
         }
+    }
+
+    // Two staggered expanding rings — retro concentric circle splash.
+    @ViewBuilder
+    private func splashRings(t: Double) -> some View {
+        let phase = t.truncatingRemainder(dividingBy: 0.5) / 0.5   // 0..1 looping
+        let phase2 = (t + 0.25).truncatingRemainder(dividingBy: 0.5) / 0.5
+        let waterBlue = Color(red: 0.35, green: 0.72, blue: 1.0)
+        Circle()
+            .stroke(waterBlue.opacity(0.75 * (1 - phase)), lineWidth: 2.5)
+            .frame(width: 16 + CGFloat(phase) * 70,
+                   height: (16 + CGFloat(phase) * 70) * 0.45)   // flat ellipse
+        Circle()
+            .stroke(Color.white.opacity(0.55 * (1 - phase2)), lineWidth: 1.5)
+            .frame(width: 10 + CGFloat(phase2) * 50,
+                   height: (10 + CGFloat(phase2) * 50) * 0.45)
     }
 }
 

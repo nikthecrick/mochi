@@ -183,14 +183,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.settingsPanel?.orderOut(nil)
                 self?.emptyTrash()
             },
-            onGivePool: { [weak self] in
-                self?.settingsPanel?.orderOut(nil)
-                self?.givePool()
-            },
-            onRemovePool: { [weak self] in
-                self?.settingsPanel?.orderOut(nil)
-                self?.removePool()
-            },
             onLend: engine.devMode ? { [weak self] in
                 self?.settingsPanel?.orderOut(nil)
                 Dialogs.lend(self?.engine ?? PetEngine())
@@ -238,7 +230,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let p = PetPanel.make()
         p.contentView = NSHostingView(rootView: ShopCard(
             engine: engine,
-            onClose: { [weak self] in self?.shopPanel?.orderOut(nil) }
+            onClose: { [weak self] in self?.shopPanel?.orderOut(nil) },
+            onGivePool: { [weak self] in
+                self?.shopPanel?.orderOut(nil)
+                self?.givePool()
+            },
+            onRemovePool: { [weak self] in
+                self?.removePool()
+            }
         ))
         shopPanel = p
         placeShop(p)
@@ -289,7 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Place the pixel pool (its own little draggable window).
     func givePool(restore: Bool = false) {
         guard poolPanel == nil, engine.hasGadget else { return }
-        let size = NSSize(width: 110, height: 110)
+        let size = NSSize(width: 164, height: 150)
         let p = PetPanel.make()
         p.setFrame(poolFrame(size: size), display: true)
         p.contentView = NSHostingView(rootView: PoolRootView(

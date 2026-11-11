@@ -11,8 +11,6 @@ struct SettingsCard: View {
     var onClose: () -> Void
     var onFeedFile: () -> Void
     var onCleanToilet: () -> Void
-    var onGivePool: () -> Void
-    var onRemovePool: () -> Void
     var onLend: (() -> Void)? = nil
     var onBorrow: (() -> Void)? = nil
     var onPlay: () -> Void = {}
@@ -72,7 +70,6 @@ struct SettingsCard: View {
             section("FILES") {
                 row("doc.on.doc.fill", "Feed with a file…", color: .teal) { onFeedFile() }
                 row("trash.fill", "Clean toilet (empty Trash)…", color: .gray) { onCleanToilet() }
-                poolRow
             }
 
             if engine.model.brainInstalled { brainSection }
@@ -306,31 +303,6 @@ struct SettingsCard: View {
             .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.white.opacity(0.05)))
         }
         .buttonStyle(HoverPress())
-    }
-
-    @ViewBuilder
-    private var poolRow: some View {
-        if engine.hasGadget {
-            if engine.model.poolOwned == true {
-                row("water.waves", "Remove the pool…", color: .blue) { onRemovePool() }
-            } else {
-                row("water.waves", "Give it a pool…", color: .blue) { onGivePool() }
-            }
-        } else {
-            HStack(spacing: 8) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.3))
-                    .frame(width: 16)
-                Text("Pool: keep feeding to unlock…")
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.38))
-                Spacer()
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 9).fill(Color.clear))
-        }
     }
 
     private func switcher(_ title: String, isOn: Binding<Bool>) -> some View {

@@ -172,14 +172,29 @@ enum Sprites {
         b.p(10, 5 + dy, "Y")
     }
 
-    /// The pool: a little pixel pond.
+    /// The pool: a pixel pond with lily pads and stone rim — fills the whole 16×16.
     private static func pond(_ b: Builder) {
-        b.rect(3, 7, 10, 6, "A")                  // water
-        b.rect(3, 6, 10, 1, "K")                 // rim
-        b.rect(2, 7, 1, 6, "K")
-        b.rect(13, 7, 1, 6, "K")
-        b.rect(3, 13, 10, 1, "K")
-        b.p(5, 9, "W"); b.p(9, 11, "W"); b.p(7, 12, "W")   // ripples
+        // Stone-tile rim (T = gray stone)
+        b.rect(1, 1, 14, 1, "T")     // top rim
+        b.rect(1, 14, 14, 1, "T")    // bottom rim
+        b.rect(1, 1, 1, 14, "T")     // left rim
+        b.rect(14, 1, 1, 14, "T")    // right rim
+        // Highlight: white top-edge and left-edge shine (3-D tile look)
+        b.rect(2, 1, 12, 1, "W")     // top shine strip
+        b.p(1, 2, "W")               // left-top corner shine
+        // Water body — 12×12 (x=2–13, y=2–13)
+        b.rect(2, 2, 12, 12, "A")
+        // Ripple highlights scattered across the water surface
+        b.p(4, 3, "W"); b.p(9, 3, "W"); b.p(13, 4, "W")
+        b.p(3, 6, "W"); b.p(7, 5, "W"); b.p(12, 6, "W")
+        b.p(5, 9, "W"); b.p(10, 8, "W"); b.p(13, 10, "W")
+        b.p(4, 12, "W"); b.p(8, 11, "W"); b.p(12, 13, "W")
+        // Lily pad 1 — 2×2 green square, rose flower on top-left cell
+        b.rect(4, 6, 2, 2, "N")
+        b.p(4, 6, "R")
+        // Lily pad 2 — 1×2 smaller, flower on top cell
+        b.rect(10, 10, 1, 2, "N")
+        b.p(10, 10, "R")
     }
 
     /// Swimming: head above the water band.
