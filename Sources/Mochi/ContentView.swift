@@ -281,6 +281,23 @@ struct PetRootView: View {
             earGlow(frame: frame, t: t)
             // retro temp display, painted directly on the egg shell
             if mood == .egg || mood == .hatch { eggTempOverlay(frame: frame) }
+            // Water immersion overlay — fades in when Mochi enters the pool, out when dragged off.
+            // Gradient covers bottom ~55% of the sprite, masked to sprite pixels so it
+            // doesn't bleed into transparent areas of the panel.
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 0.28, green: 0.65, blue: 0.95).opacity(0), location: 0),
+                    .init(color: Color(red: 0.28, green: 0.65, blue: 0.95).opacity(0.28), location: 0.45),
+                    .init(color: Color(red: 0.15, green: 0.45, blue: 0.85).opacity(0.55), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(width: 16.0 * scale, height: 16.0 * scale * 0.6)
+            .frame(width: 16.0 * scale, height: 16.0 * scale, alignment: .bottom)
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides))
+            .opacity(engine.swimActive ? 1 : 0)
+            .animation(.easeInOut(duration: 0.5), value: engine.swimActive)
+            .allowsHitTesting(false)
         }
         .scaleEffect(x: stretchX(t: t), y: stretchY(t: t))
         .offset(x: wobbleX(mood: mood, t: t),
@@ -290,6 +307,7 @@ struct PetRootView: View {
                 onDrag: { dx, dy in
                     engine.dragged = true          // dangling-leg wiggle while picked up
                     engine.walkUntil = nil
+                    if engine.swimActive { engine.swimUntil = Date() }  // drag off pool fades water out
                     dragDelta(dx, dy)
                 },
                 onRelease: { moved in
@@ -1043,32 +1061,24 @@ struct PoolRootView: View {
     var settle: () -> Void
     var popMenu: () -> Void
 
-    private let panelW: CGFloat = 200
-    private let panelH: CGFloat = 165
-    // y positions from panel top
-    private let waterY: CGFloat = 65   // water surface line
-    private let wallY:  CGFloat = 98   // stone wall top edge
+    // Pool sprite at scale 10 = 160×160; 5 pt padding each side → 170×170 panel
+    private let spriteScale: CGFloat = 10
+    private let pad: CGFloat = 5
+
+    private var panelSize: CGFloat { 16 * spriteScale + 2 * pad }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.08)) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
-            ZStack(alignment: .topLeading) {
-                // Water body — semi-transparent blue from waterY to wallY
-                waterBodyView
-                // Stone wall — opaque tiles from wallY down (covers Mochi's feet via window z-order)
-                stoneWallCanvas
-                // Pool rim strip at the top of the wall
-                poolRimView
-                // Animated water surface shimmer + ripple dots
-                waterSurfaceView(t: t)
-                // Splash rings on pool entry/exit
-                if engine.poolSplashActive {
-                    splashRingsView(t: t)
-                }
+            ZStack {
+                PixelSpriteView(frame: .pool, scale: spriteScale)
+                    .padding(pad)
+                waterShimmer(t: t)
+                if engine.poolSplashActive { splashRings(t: t) }
             }
-            .frame(width: panelW, height: panelH)
+            .frame(width: panelSize, height: panelSize)
             .contentShape(Rectangle())
-            .shadow(color: Color(red: 0.2, green: 0.45, blue: 0.9).opacity(0.35), radius: 14, y: 7)
+            .shadow(color: Color(red: 0.55, green: 0.30, blue: 0.10).opacity(0.45), radius: 12, y: 6)
             .overlay(
                 DragArea(
                     onDrag: { dx, dy in dragDelta(dx, dy) },
@@ -1079,115 +1089,39 @@ struct PoolRootView: View {
         }
     }
 
-    // MARK: – sub-views
-
-    // Semi-transparent blue gradient band: waterY → wallY (shows Mochi's submerged mid-section)
-    private var waterBodyView: some View {
-        LinearGradient(
-            stops: [
-                .init(color: Color(red: 0.38, green: 0.74, blue: 0.97).opacity(0.80), location: 0),
-                .init(color: Color(red: 0.18, green: 0.52, blue: 0.88).opacity(0.90), location: 1),
-            ],
-            startPoint: .top, endPoint: .bottom
-        )
-        .frame(width: panelW, height: wallY - waterY)
-        .padding(.top, waterY)
-        .frame(width: panelW, height: panelH, alignment: .topLeading)
-    }
-
-    // Opaque stone tile wall — drawn entirely from wallY down (covers Mochi's feet)
-    private var stoneWallCanvas: some View {
-        Canvas { ctx, size in
-            let tileW: CGFloat = 24, tileH: CGFloat = 15
-            let baseC = Color(red: 0.70, green: 0.68, blue: 0.73)
-            let litC  = Color(red: 0.86, green: 0.84, blue: 0.88)
-            let midC  = Color(red: 0.77, green: 0.75, blue: 0.79)
-            let grtC  = Color(red: 0.49, green: 0.47, blue: 0.52)
-            var row = 0; var y = wallY
-            while y < size.height + 1 {
-                let xOff: CGFloat = row % 2 == 0 ? 0 : -tileW / 2
-                var x = xOff
-                while x < size.width + tileW {
-                    // tile body
-                    ctx.fill(Path(CGRect(x: x+0.5, y: y+0.5, width: tileW-1, height: tileH-1)), with: .color(baseC))
-                    // top highlight
-                    ctx.fill(Path(CGRect(x: x+0.5, y: y+0.5, width: tileW-1, height: 2.5)), with: .color(litC))
-                    // left highlight
-                    ctx.fill(Path(CGRect(x: x+0.5, y: y+2.5, width: 2, height: tileH-3.5)), with: .color(midC))
-                    // grout shadows
-                    ctx.fill(Path(CGRect(x: x+0.5, y: y+tileH-1.5, width: tileW-1, height: 1.5)), with: .color(grtC))
-                    ctx.fill(Path(CGRect(x: x+tileW-1.5, y: y+0.5, width: 1.5, height: tileH-1)), with: .color(grtC))
-                    x += tileW
-                }
-                y += tileH; row += 1
-            }
-        }
-        .frame(width: panelW, height: panelH)
-    }
-
-    // Bright ledge strip between water and wall
-    private var poolRimView: some View {
-        ZStack(alignment: .topLeading) {
-            LinearGradient(
-                colors: [Color(red: 0.91, green: 0.89, blue: 0.94),
-                         Color(red: 0.77, green: 0.75, blue: 0.80)],
-                startPoint: .top, endPoint: .bottom
-            )
-            .frame(width: panelW, height: 7)
-            Rectangle()
-                .fill(Color.white.opacity(0.72))
-                .frame(width: panelW, height: 1.5)
-        }
-        .padding(.top, wallY - 7)
-        .frame(width: panelW, height: panelH, alignment: .topLeading)
-    }
-
-    // Animated shimmer line + gentle ripple dots in the water band
+    // Subtle animated glints on the dark water surface
     @ViewBuilder
-    private func waterSurfaceView(t: Double) -> some View {
-        let shimmer = 0.42 + 0.26 * sin(t * 4.8)
-        Rectangle()
-            .fill(Color.white.opacity(shimmer))
-            .frame(width: panelW, height: 2.5)
-            .blur(radius: 1.5)
-            .padding(.top, waterY - 1.5)
-            .frame(width: panelW, height: panelH, alignment: .topLeading)
-        waterRipplesView(t: t)
-    }
-
-    @ViewBuilder
-    private func waterRipplesView(t: Double) -> some View {
-        let dots: [(x: CGFloat, y: CGFloat, freq: Double)] = [
-            (38, 71, 1.7), (90, 68, 2.1), (155, 74, 1.4),
-            (62, 79, 2.5), (128, 70, 1.9), (178, 77, 2.3)
+    private func waterShimmer(t: Double) -> some View {
+        let glints: [(x: CGFloat, y: CGFloat, freq: Double, phase: Double)] = [
+            (55, 60, 2.3, 0.0), (90, 68, 1.7, 1.1), (118, 58, 2.8, 2.3),
+            (68, 90, 2.1, 0.7), (108, 97, 1.9, 1.8), (82, 112, 2.5, 3.2),
         ]
-        ForEach(Array(dots.enumerated()), id: \.offset) { i, d in
-            let op = 0.10 + 0.09 * sin(t * d.freq + Double(i))
+        ForEach(Array(glints.enumerated()), id: \.offset) { _, g in
             Ellipse()
-                .fill(Color.white.opacity(op))
-                .frame(width: 10, height: 4)
-                .position(x: d.x, y: d.y)
-                .frame(width: panelW, height: panelH)
+                .fill(Color.white.opacity(0.07 + 0.08 * sin(t * g.freq + g.phase)))
+                .frame(width: 14, height: 5)
+                .position(x: g.x + pad, y: g.y + pad)
         }
+        .frame(width: panelSize, height: panelSize)
     }
 
-    // Two staggered expanding rings centered at the water surface
+    // Circular splash rings (top-down view — real circles, not squished ellipses)
     @ViewBuilder
-    private func splashRingsView(t: Double) -> some View {
+    private func splashRings(t: Double) -> some View {
         let p1 = t.truncatingRemainder(dividingBy: 0.5) / 0.5
         let p2 = (t + 0.25).truncatingRemainder(dividingBy: 0.5) / 0.5
-        let waterBlue = Color(red: 0.40, green: 0.78, blue: 1.0)
+        let cx = panelSize / 2, cy = panelSize / 2
         ZStack {
-            Ellipse()
-                .stroke(waterBlue.opacity(0.85 * (1 - p1)), lineWidth: 2.5)
-                .frame(width: 20 + 85 * p1, height: (20 + 85 * p1) * 0.28)
-            Ellipse()
-                .stroke(Color.white.opacity(0.65 * (1 - p2)), lineWidth: 1.5)
-                .frame(width: 12 + 58 * p2, height: (12 + 58 * p2) * 0.28)
+            Circle()
+                .stroke(Color(red: 0.45, green: 0.70, blue: 0.98).opacity(0.80 * (1 - p1)),
+                        lineWidth: 2.0)
+                .frame(width: 18 + 65 * p1, height: 18 + 65 * p1)
+            Circle()
+                .stroke(Color.white.opacity(0.60 * (1 - p2)), lineWidth: 1.5)
+                .frame(width: 12 + 44 * p2, height: 12 + 44 * p2)
         }
-        .padding(.top, waterY - 5)
-        .frame(width: panelW, height: panelH, alignment: .top)
-        .frame(width: panelW)
+        .position(x: cx, y: cy)
+        .frame(width: panelSize, height: panelSize)
     }
 }
 

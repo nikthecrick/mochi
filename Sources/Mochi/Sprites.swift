@@ -33,6 +33,8 @@ enum Pal {
         "M": RGBA(r: 0.84, g: 0.55, b: 0.35),   // meat / brown
         "A": RGBA(r: 0.47, g: 0.72, b: 0.98),   // water
         "V": RGBA(r: 0.68, g: 0.42, b: 1.00),   // violet / magic
+        "C": RGBA(r: 0.68, g: 0.36, b: 0.12),   // copper / rust (pool rim)
+        "J": RGBA(r: 0.36, g: 0.17, b: 0.05),   // dark rust (pool inner shadow)
     ]
     static let fallback = RGBA(r: 1, g: 0, b: 1)
     static func color(_ c: Character) -> Color {
@@ -172,29 +174,53 @@ enum Sprites {
         b.p(10, 5 + dy, "Y")
     }
 
-    /// The pool: a pixel pond with lily pads and stone rim — fills the whole 16×16.
+    /// The pool: a round copper/rust bowl (COR-TEN style) viewed from above.
     private static func pond(_ b: Builder) {
-        // Stone-tile rim (T = gray stone)
-        b.rect(1, 1, 14, 1, "T")     // top rim
-        b.rect(1, 14, 14, 1, "T")    // bottom rim
-        b.rect(1, 1, 1, 14, "T")     // left rim
-        b.rect(14, 1, 1, 14, "T")    // right rim
-        // Highlight: white top-edge and left-edge shine (3-D tile look)
-        b.rect(2, 1, 12, 1, "W")     // top shine strip
-        b.p(1, 2, "W")               // left-top corner shine
-        // Water body — 12×12 (x=2–13, y=2–13)
-        b.rect(2, 2, 12, 12, "A")
-        // Ripple highlights scattered across the water surface
-        b.p(4, 3, "W"); b.p(9, 3, "W"); b.p(13, 4, "W")
-        b.p(3, 6, "W"); b.p(7, 5, "W"); b.p(12, 6, "W")
-        b.p(5, 9, "W"); b.p(10, 8, "W"); b.p(13, 10, "W")
-        b.p(4, 12, "W"); b.p(8, 11, "W"); b.p(12, 13, "W")
-        // Lily pad 1 — 2×2 green square, rose flower on top-left cell
-        b.rect(4, 6, 2, 2, "N")
-        b.p(4, 6, "R")
-        // Lily pad 2 — 1×2 smaller, flower on top cell
-        b.rect(10, 10, 1, 2, "N")
-        b.p(10, 10, "R")
+        // ── Copper base fill (whole bowl circle, outer r≈7) ──
+        b.rect(5, 1, 6, 1, "C")
+        b.rect(3, 2, 10, 1, "C")
+        b.rect(2, 3, 12, 1, "C")
+        b.rect(1, 4, 14, 1, "C")
+        b.rect(1, 5, 14, 6, "C")  // rows 5-10
+        b.rect(1, 11, 14, 1, "C")
+        b.rect(2, 12, 12, 1, "C")
+        b.rect(3, 13, 10, 1, "C")
+        b.rect(5, 14, 6, 1, "C")
+
+        // ── Dark inner shadow ring (J) — bowl wall depth ──
+        b.rect(5, 2, 6, 1, "J")                             // row 2 inner
+        b.rect(3, 3, 2, 1, "J"); b.rect(11, 3, 2, 1, "J")  // row 3 sides
+        b.rect(2, 4, 2, 1, "J"); b.rect(12, 4, 2, 1, "J")  // row 4 sides
+        b.rect(2, 5, 1, 6, "J"); b.rect(13, 5, 1, 6, "J")  // rows 5-10 sides
+        b.rect(2, 11, 2, 1, "J"); b.rect(12, 11, 2, 1, "J")
+        b.rect(3, 12, 2, 1, "J"); b.rect(11, 12, 2, 1, "J")
+        b.rect(5, 13, 6, 1, "J")                            // row 13 inner
+
+        // ── Dark water body (K) ──
+        b.rect(5, 3, 6, 1, "K")
+        b.rect(4, 4, 8, 1, "K")
+        b.rect(3, 5, 10, 6, "K")  // rows 5-10
+        b.rect(4, 11, 8, 1, "K")
+        b.rect(5, 12, 6, 1, "K")
+
+        // ── Blue sky reflection (A) in upper water area ──
+        b.rect(5, 4, 5, 2, "A")                // main patch rows 4-5
+        b.p(4, 5, "A")                          // extend left
+        b.p(10, 4, "A"); b.p(11, 4, "A")       // right glimmer row 4
+        b.p(10, 5, "A"); b.p(9, 6, "A")        // scatter
+
+        // ── Sparkle highlights (W) ──
+        b.p(6, 4, "W")
+        b.p(5, 5, "W")
+        b.p(11, 6, "W")
+        b.p(7, 10, "W")
+
+        // ── Warm light on top rim ──
+        b.rect(5, 1, 3, 1, "Y")   // golden glint on top cap
+        b.p(3, 2, "W")            // white shine upper-left
+
+        // ── Ground shadow below pool ──
+        b.p(3, 15, "K"); b.rect(4, 15, 8, 1, "K"); b.p(12, 15, "K")
     }
 
     /// Swimming: head above the water band.
