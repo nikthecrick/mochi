@@ -278,7 +278,9 @@ struct PetRootView: View {
         ZStack {
             PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides)
                 .shadow(color: .black.opacity(0.3), radius: 4, y: 3)
-            earGlow(frame: frame, t: t)
+                .opacity(engine.swimActive ? 0 : 1)
+                .animation(.easeInOut(duration: 0.35), value: engine.swimActive)
+            if !engine.swimActive { earGlow(frame: frame, t: t) }
             // retro temp display, painted directly on the egg shell
             if mood == .egg || mood == .hatch { eggTempOverlay(frame: frame) }
         }
@@ -1035,7 +1037,7 @@ struct IconButtonStyle: ButtonStyle {
 }
 
 
-// MARK: - Pool (gadget stage: a pixel pond you can park anywhere on the desktop)
+// MARK: - Pool (gadget stage: 3D front-view pixel pond you can park anywhere)
 
 struct PoolRootView: View {
     @ObservedObject var engine: PetEngine
@@ -1043,36 +1045,36 @@ struct PoolRootView: View {
     var settle: () -> Void
     var popMenu: () -> Void
 
-    private let poolScale: CGFloat = 9   // 16 * 9 = 144 px sprite
-    private let panelW: CGFloat = 164
-    private let panelH: CGFloat = 150
+    private let panelW: CGFloat = 200
+    private let panelH: CGFloat = 165
+    // y positions from panel top
+    private let waterY: CGFloat = 65   // water surface line
+    private let wallY:  CGFloat = 98   // stone wall top edge
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.08)) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
-            ZStack {
-                // Base pool sprite
-                PixelSpriteView(frame: .pool, scale: poolScale)
-                    .shadow(color: Color(red: 0.2, green: 0.5, blue: 1.0).opacity(0.4),
-                            radius: 10, y: 5)
-                    .opacity(0.97)
-
-                // Shimmer overlay while swimming — faint bright pulsing layer
+            ZStack(alignment: .topLeading) {
+                // 1. Mochi inside the pool — rendered BEFORE the water/wall overlay
                 if engine.swimActive {
-                    let shimmer = 0.08 + 0.06 * sin(t * 4.5)
-                    PixelSpriteView(frame: .pool, scale: poolScale)
-                        .opacity(shimmer)
-                        .blur(radius: 1.2)
-                        .blendMode(.screen)
+                    mochiInPool(t: t)
                 }
-
-                // Expanding splash rings on entry/exit
+                // 2. Water body — semi-transparent blue covers waterY–wallY over Mochi's mid-section
+                waterBodyView
+                // 3. Stone wall — opaque tiles from wallY down, fully hides Mochi's feet
+                stoneWallCanvas
+                // 4. Pool rim strip at the top of the wall
+                poolRimView
+                // 5. Animated water surface shimmer + ripple dots
+                waterSurfaceView(t: t)
+                // 6. Splash rings on pool entry/exit
                 if engine.poolSplashActive {
-                    splashRings(t: t)
+                    splashRingsView(t: t)
                 }
             }
             .frame(width: panelW, height: panelH)
             .contentShape(Rectangle())
+            .shadow(color: Color(red: 0.2, green: 0.45, blue: 0.9).opacity(0.35), radius: 14, y: 7)
             .overlay(
                 DragArea(
                     onDrag: { dx, dy in dragDelta(dx, dy) },
@@ -1083,20 +1085,128 @@ struct PoolRootView: View {
         }
     }
 
-    // Two staggered expanding rings — retro concentric circle splash.
+    // MARK: – sub-views
+
+    // Mochi positioned so ~57% of body shows above the water surface
+    private func mochiInPool(t: Double) -> some View {
+        let sc   = CGFloat(engine.ageScale())
+        let sprH = sc * 16
+        let topPad = max(2, waterY - sprH * 0.57)
+        let frame: Frame = Int(t * 4) % 2 == 0 ? .happyA : .happyB
+        return PixelSpriteView(frame: frame, scale: sc, overrides: engine.breedOverrides)
+            .frame(width: panelW, alignment: .center)
+            .padding(.top, topPad)
+            .frame(width: panelW, height: panelH, alignment: .topLeading)
+            .animation(.easeIn(duration: 0.3), value: engine.swimActive)
+    }
+
+    // Semi-transparent blue gradient band: waterY → wallY (shows Mochi's submerged mid-section)
+    private var waterBodyView: some View {
+        LinearGradient(
+            stops: [
+                .init(color: Color(red: 0.38, green: 0.74, blue: 0.97).opacity(0.80), location: 0),
+                .init(color: Color(red: 0.18, green: 0.52, blue: 0.88).opacity(0.90), location: 1),
+            ],
+            startPoint: .top, endPoint: .bottom
+        )
+        .frame(width: panelW, height: wallY - waterY)
+        .padding(.top, waterY)
+        .frame(width: panelW, height: panelH, alignment: .topLeading)
+    }
+
+    // Opaque stone tile wall — drawn entirely from wallY down (covers Mochi's feet)
+    private var stoneWallCanvas: some View {
+        Canvas { ctx, size in
+            let tileW: CGFloat = 24, tileH: CGFloat = 15
+            let baseC = Color(red: 0.70, green: 0.68, blue: 0.73)
+            let litC  = Color(red: 0.86, green: 0.84, blue: 0.88)
+            let midC  = Color(red: 0.77, green: 0.75, blue: 0.79)
+            let grtC  = Color(red: 0.49, green: 0.47, blue: 0.52)
+            var row = 0; var y = wallY
+            while y < size.height + 1 {
+                let xOff: CGFloat = row % 2 == 0 ? 0 : -tileW / 2
+                var x = xOff
+                while x < size.width + tileW {
+                    // tile body
+                    ctx.fill(Path(CGRect(x: x+0.5, y: y+0.5, width: tileW-1, height: tileH-1)), with: .color(baseC))
+                    // top highlight
+                    ctx.fill(Path(CGRect(x: x+0.5, y: y+0.5, width: tileW-1, height: 2.5)), with: .color(litC))
+                    // left highlight
+                    ctx.fill(Path(CGRect(x: x+0.5, y: y+2.5, width: 2, height: tileH-3.5)), with: .color(midC))
+                    // grout shadows
+                    ctx.fill(Path(CGRect(x: x+0.5, y: y+tileH-1.5, width: tileW-1, height: 1.5)), with: .color(grtC))
+                    ctx.fill(Path(CGRect(x: x+tileW-1.5, y: y+0.5, width: 1.5, height: tileH-1)), with: .color(grtC))
+                    x += tileW
+                }
+                y += tileH; row += 1
+            }
+        }
+        .frame(width: panelW, height: panelH)
+    }
+
+    // Bright ledge strip between water and wall
+    private var poolRimView: some View {
+        ZStack(alignment: .topLeading) {
+            LinearGradient(
+                colors: [Color(red: 0.91, green: 0.89, blue: 0.94),
+                         Color(red: 0.77, green: 0.75, blue: 0.80)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(width: panelW, height: 7)
+            Rectangle()
+                .fill(Color.white.opacity(0.72))
+                .frame(width: panelW, height: 1.5)
+        }
+        .padding(.top, wallY - 7)
+        .frame(width: panelW, height: panelH, alignment: .topLeading)
+    }
+
+    // Animated shimmer line + gentle ripple dots in the water band
     @ViewBuilder
-    private func splashRings(t: Double) -> some View {
-        let phase = t.truncatingRemainder(dividingBy: 0.5) / 0.5   // 0..1 looping
-        let phase2 = (t + 0.25).truncatingRemainder(dividingBy: 0.5) / 0.5
-        let waterBlue = Color(red: 0.35, green: 0.72, blue: 1.0)
-        Circle()
-            .stroke(waterBlue.opacity(0.75 * (1 - phase)), lineWidth: 2.5)
-            .frame(width: 16 + CGFloat(phase) * 70,
-                   height: (16 + CGFloat(phase) * 70) * 0.45)   // flat ellipse
-        Circle()
-            .stroke(Color.white.opacity(0.55 * (1 - phase2)), lineWidth: 1.5)
-            .frame(width: 10 + CGFloat(phase2) * 50,
-                   height: (10 + CGFloat(phase2) * 50) * 0.45)
+    private func waterSurfaceView(t: Double) -> some View {
+        let shimmer = 0.42 + 0.26 * sin(t * 4.8)
+        Rectangle()
+            .fill(Color.white.opacity(shimmer))
+            .frame(width: panelW, height: 2.5)
+            .blur(radius: 1.5)
+            .padding(.top, waterY - 1.5)
+            .frame(width: panelW, height: panelH, alignment: .topLeading)
+        waterRipplesView(t: t)
+    }
+
+    @ViewBuilder
+    private func waterRipplesView(t: Double) -> some View {
+        let dots: [(x: CGFloat, y: CGFloat, freq: Double)] = [
+            (38, 71, 1.7), (90, 68, 2.1), (155, 74, 1.4),
+            (62, 79, 2.5), (128, 70, 1.9), (178, 77, 2.3)
+        ]
+        ForEach(Array(dots.enumerated()), id: \.offset) { i, d in
+            let op = 0.10 + 0.09 * sin(t * d.freq + Double(i))
+            Ellipse()
+                .fill(Color.white.opacity(op))
+                .frame(width: 10, height: 4)
+                .position(x: d.x, y: d.y)
+                .frame(width: panelW, height: panelH)
+        }
+    }
+
+    // Two staggered expanding rings centered at the water surface
+    @ViewBuilder
+    private func splashRingsView(t: Double) -> some View {
+        let p1 = t.truncatingRemainder(dividingBy: 0.5) / 0.5
+        let p2 = (t + 0.25).truncatingRemainder(dividingBy: 0.5) / 0.5
+        let waterBlue = Color(red: 0.40, green: 0.78, blue: 1.0)
+        ZStack {
+            Ellipse()
+                .stroke(waterBlue.opacity(0.85 * (1 - p1)), lineWidth: 2.5)
+                .frame(width: 20 + 85 * p1, height: (20 + 85 * p1) * 0.28)
+            Ellipse()
+                .stroke(Color.white.opacity(0.65 * (1 - p2)), lineWidth: 1.5)
+                .frame(width: 12 + 58 * p2, height: (12 + 58 * p2) * 0.28)
+        }
+        .padding(.top, waterY - 5)
+        .frame(width: panelW, height: panelH, alignment: .top)
+        .frame(width: panelW)
     }
 }
 

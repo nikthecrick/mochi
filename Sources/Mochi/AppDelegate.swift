@@ -288,7 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Place the pixel pool (its own little draggable window).
     func givePool(restore: Bool = false) {
         guard poolPanel == nil, engine.hasGadget else { return }
-        let size = NSSize(width: 164, height: 150)
+        let size = NSSize(width: 200, height: 165)
         let p = PetPanel.make()
         p.setFrame(poolFrame(size: size), display: true)
         p.contentView = NSHostingView(rootView: PoolRootView(
