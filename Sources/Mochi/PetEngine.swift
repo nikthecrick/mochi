@@ -142,7 +142,9 @@ final class PetEngine: ObservableObject {
     @Published var speechBubble: String? = nil
     @Published var speechBubbleUntil: Date? = nil
     @Published var brainThinking: Bool = false
+    @Published var brainActing: Bool = false       // true while brain executes a tool call
     @Published var cocoonWakeUntil: Date? = nil  // non-nil while waking from cocoon
+    @Published var magicAuraUntil: Date? = nil   // non-nil while magic aura is active
     private var lastScaleMark = -1.0
     // Incubation: live CPU temp shown on the shell; warmth speeds hatching.
     @Published var eggTemp: Double = 40
@@ -262,6 +264,7 @@ final class PetEngine: ObservableObject {
         advancePoopPhase()
         advanceSwim()
         advanceCocoon()
+        advanceMagicAura()
         maybeGrow()
         maybeWalk()
         maybeJump()
@@ -278,6 +281,11 @@ final class PetEngine: ObservableObject {
         cocoonWakeUntil = nil
         spawn(.sparkle, 6)
         sound?.play(.hatch)
+    }
+
+    private func advanceMagicAura() {
+        guard let until = magicAuraUntil, now >= until else { return }
+        magicAuraUntil = nil
     }
 
     private func pruneSpeechBubble() {
@@ -875,6 +883,14 @@ final class PetEngine: ObservableObject {
     }
 
     // MARK: - Cocoon (clean-quit persistence)
+
+    var magicAuraActive: Bool { magicAuraUntil.map { now < $0 } ?? false }
+
+    func triggerMagicAura(seconds: Double = 6.0) {
+        magicAuraUntil = now.addingTimeInterval(seconds)
+        spawn(.star, 4)
+        spawn(.sparkle, 2)
+    }
 
     var cocoonWaking: Bool { cocoonWakeUntil.map { now < $0 } ?? false }
     var cocoonPhase: Double {

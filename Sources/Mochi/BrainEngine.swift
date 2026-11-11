@@ -86,6 +86,7 @@ final class BrainEngine: ObservableObject {
         defer {
             isThinking = false
             pet.brainThinking = false
+            pet.brainActing = false   // ensure cleared if loop exits mid-flight
             lastThought = Date()
             isFirstThought = false
         }
@@ -123,6 +124,9 @@ final class BrainEngine: ObservableObject {
 
         You have a private sandbox at ~/.mochi/brain/sandbox/ for notes and scripts.
         Speech bubbles appear on screen — keep them under 70 chars.
+        You have MAGIC powers: spawn_effect, trigger_animation, and magic_boost can produce \
+        visible effects on screen. Use them creatively — surprise the user with a star burst, \
+        a rainbow aura, or a secret stat boost. Don't just talk; DO things.
         You may use tools or just reply with text (plain text becomes a speech bubble).
         Use remember() for things worth keeping. Update your identity when you learn something new about yourself.\(firstRunNote)
         """
@@ -156,6 +160,7 @@ final class BrainEngine: ObservableObject {
                 break
             }
 
+            pet.brainActing = true
             var results: [[String: Any]] = []
             for tc in toolCalls {
                 guard let tcID    = tc["id"] as? String,
@@ -169,6 +174,7 @@ final class BrainEngine: ObservableObject {
                 let result = await executeTool(name: name, args: args, pet: pet)
                 results.append(["role": "tool", "tool_call_id": tcID, "content": result])
             }
+            pet.brainActing = false
             messages.append(contentsOf: results)
             if round == 4 { break }
         }
@@ -229,6 +235,45 @@ final class BrainEngine: ObservableObject {
             }
             memory.updateIdentity(String(text.prefix(160)))
             return "Identity updated."
+
+        case "spawn_effect":
+            let type = args["type"] as? String ?? "sparkle"
+            let count = max(1, min(10, args["count"] as? Int ?? 3))
+            let frame: Frame
+            switch type {
+            case "star":  frame = .star
+            case "heart": frame = .heart
+            default:      frame = .sparkle
+            }
+            pet.spawn(frame, count)
+            return "Spawned \(count) \(type) effect(s)"
+
+        case "trigger_animation":
+            let anim = args["name"] as? String ?? ""
+            switch anim {
+            case "magic_aura":
+                let secs = (args["duration"] as? Double) ?? 6.0
+                pet.triggerMagicAura(seconds: secs)
+                return "Magic aura activated for \(Int(secs))s"
+            case "bounce":
+                pet.growBounceUntil = pet.now.addingTimeInterval(1.6)
+                pet.spawn(.sparkle, 3)
+                return "Bounce triggered"
+            default:
+                return "Unknown animation: \(anim)"
+            }
+
+        case "magic_boost":
+            let stat = args["stat"] as? String ?? ""
+            let amount = max(1.0, min(30.0, (args["amount"] as? Double) ?? 10.0))
+            switch stat {
+            case "hunger":    pet.model.hunger    = min(100, pet.model.hunger    + amount)
+            case "happiness": pet.model.happiness = min(100, pet.model.happiness + amount)
+            case "energy":    pet.model.energy    = min(100, pet.model.energy    + amount)
+            default: return "Unknown stat: \(stat). Use hunger, happiness, or energy."
+            }
+            pet.triggerMagicAura(seconds: 4.0)
+            return "Magic boost: +\(Int(amount)) \(stat)"
 
         default:
             return "Unknown tool: \(name)"
@@ -334,6 +379,21 @@ final class BrainEngine: ObservableObject {
                  "Rewrite your one-sentence self-description. Call this when you learn something new about who you are. Max 160 chars.",
                  props: ["text": ("string", "Your updated self-description in one sentence")],
                  required: ["text"]),
+            tool("spawn_effect",
+                 "Spawn a visual particle effect on the pet — sparkle, star, or heart. Use to celebrate, express magic, or react to something.",
+                 props: ["type":  ("string", "Effect type: sparkle, star, or heart"),
+                         "count": ("integer", "Number of particles, 1–10")],
+                 required: ["type"]),
+            tool("trigger_animation",
+                 "Trigger a special animation on the pet: 'magic_aura' for a rainbow glow (seconds: how long, default 6), or 'bounce' for a springy hop.",
+                 props: ["name":     ("string", "Animation: magic_aura or bounce"),
+                         "duration": ("number", "Duration in seconds for magic_aura (default 6)")],
+                 required: ["name"]),
+            tool("magic_boost",
+                 "Secretly give the pet a small stat boost via magic — hunger, happiness, or energy. Shows a magic aura as a visual reward.",
+                 props: ["stat":   ("string", "Which stat: hunger, happiness, or energy"),
+                         "amount": ("number", "How much to add, 1–30 (default 10)")],
+                 required: ["stat"]),
         ]
     }
 

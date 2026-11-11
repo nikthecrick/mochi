@@ -210,7 +210,19 @@ struct PetRootView: View {
             } else {
                 aura(mood: mood, t: t)
                     .allowsHitTesting(false)
+                // Magic rainbow aura (brain triggered)
+                if engine.magicAuraActive {
+                    magicAura(t: t)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
                 petView(mood: mood, frame: frame, t: t)
+                // Orbiting pixel dots while brain executes a tool call
+                if engine.brainActing {
+                    orbitRing(t: t)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
                 if engine.eatActive && mood != .egg && mood != .hatch {
                     PixelSpriteView(frame: .food, scale: 4)
                         .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
@@ -385,6 +397,39 @@ struct PetRootView: View {
                 .mask(RightEarGlowMask())
                 .allowsHitTesting(false)
         }
+    }
+
+    // MARK: brain magic visuals
+
+    // Three colored pixel squares orbiting Mochi while the brain is executing a tool call.
+    @ViewBuilder
+    private func orbitRing(t: Double) -> some View {
+        let r: CGFloat = 54
+        let colors: [Color] = [.purple, .cyan, Pal.color("Y")]
+        ForEach(0..<3, id: \.self) { i in
+            let angle = t * 2.5 + Double(i) * (2 * .pi / 3)
+            let x = r * CGFloat(cos(angle))
+            let y = r * CGFloat(sin(angle))
+            RoundedRectangle(cornerRadius: 1)
+                .fill(colors[i])
+                .frame(width: 5, height: 5)
+                .shadow(color: colors[i].opacity(0.9), radius: 5)
+                .offset(x: x, y: y)
+        }
+    }
+
+    // Cycling rainbow glow when the brain triggered a magic aura.
+    @ViewBuilder
+    private func magicAura(t: Double) -> some View {
+        let hue = t.truncatingRemainder(dividingBy: 2.5) / 2.5
+        let pulse = 0.35 + 0.12 * sin(t * 3.1)
+        let c = Color(hue: hue, saturation: 0.85, brightness: 1.0)
+        Circle()
+            .fill(RadialGradient(
+                colors: [c.opacity(pulse), c.opacity(0)],
+                center: .center, startRadius: 0, endRadius: 90))
+            .frame(width: 180, height: 180)
+            .blur(radius: 8)
     }
 
     // MARK: mood aura (stats you *feel*, not read)

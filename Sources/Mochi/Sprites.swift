@@ -32,6 +32,7 @@ enum Pal {
         "O": RGBA(r: 0.98, g: 0.97, b: 0.93),    // egg shell
         "M": RGBA(r: 0.84, g: 0.55, b: 0.35),   // meat / brown
         "A": RGBA(r: 0.47, g: 0.72, b: 0.98),   // water
+        "V": RGBA(r: 0.68, g: 0.42, b: 1.00),   // violet / magic
     ]
     static let fallback = RGBA(r: 1, g: 0, b: 1)
     static func color(_ c: Character) -> Color {
@@ -52,7 +53,7 @@ enum Frame: String, CaseIterable {
     case idleA, blink, walkA, walkB, happyA, happyB, sadA, sadB
     case sleepA, sleepB, eatA, eatB
     case ghost, tomb, egg, eggCrack, food, heart
-    case drumstick, zz, sparkle
+    case drumstick, zz, sparkle, star
     case lick, chompA, chompB
     case standA, standB, walkLegsA, walkLegsB, dangleA, dangleB
     case lookL, lookR, smug, standLookL, standLookR, standSmug
@@ -459,6 +460,17 @@ enum Sprites {
             b.rect(5, 7, 2, 1, "W")
             b.rect(9, 7, 2, 1, "W")
             b.rect(7, 7, 2, 2, "Y")
+        case .star:
+            // 4-pointed magic star — longer arms, gold body, violet accent, rose core
+            b.rect(7, 3, 2, 3, "Y")    // top arm
+            b.rect(7, 10, 2, 3, "Y")   // bottom arm
+            b.rect(3, 7, 3, 2, "Y")    // left arm
+            b.rect(10, 7, 3, 2, "Y")   // right arm
+            b.rect(6, 6, 4, 4, "Y")    // center block
+            b.p(5, 5, "V"); b.p(10, 5, "V")   // diagonal twinkle
+            b.p(5, 10, "V"); b.p(10, 10, "V")
+            b.rect(7, 7, 2, 2, "R")    // rose inner core
+            b.p(7, 7, "W")             // white hot center
         case .spinA:   // play: spin (dizzy squint)
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
             eyes(b, open: false)
