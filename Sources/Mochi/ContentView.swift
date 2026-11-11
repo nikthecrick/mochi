@@ -278,9 +278,7 @@ struct PetRootView: View {
         ZStack {
             PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides)
                 .shadow(color: .black.opacity(0.3), radius: 4, y: 3)
-                .opacity(engine.swimActive ? 0 : 1)
-                .animation(.easeInOut(duration: 0.35), value: engine.swimActive)
-            if !engine.swimActive { earGlow(frame: frame, t: t) }
+            earGlow(frame: frame, t: t)
             // retro temp display, painted directly on the egg shell
             if mood == .egg || mood == .hatch { eggTempOverlay(frame: frame) }
         }
@@ -1055,19 +1053,15 @@ struct PoolRootView: View {
         TimelineView(.animation(minimumInterval: 0.08)) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
             ZStack(alignment: .topLeading) {
-                // 1. Mochi inside the pool — rendered BEFORE the water/wall overlay
-                if engine.swimActive {
-                    mochiInPool(t: t)
-                }
-                // 2. Water body — semi-transparent blue covers waterY–wallY over Mochi's mid-section
+                // Water body — semi-transparent blue from waterY to wallY
                 waterBodyView
-                // 3. Stone wall — opaque tiles from wallY down, fully hides Mochi's feet
+                // Stone wall — opaque tiles from wallY down (covers Mochi's feet via window z-order)
                 stoneWallCanvas
-                // 4. Pool rim strip at the top of the wall
+                // Pool rim strip at the top of the wall
                 poolRimView
-                // 5. Animated water surface shimmer + ripple dots
+                // Animated water surface shimmer + ripple dots
                 waterSurfaceView(t: t)
-                // 6. Splash rings on pool entry/exit
+                // Splash rings on pool entry/exit
                 if engine.poolSplashActive {
                     splashRingsView(t: t)
                 }
@@ -1086,19 +1080,6 @@ struct PoolRootView: View {
     }
 
     // MARK: – sub-views
-
-    // Mochi positioned so ~57% of body shows above the water surface
-    private func mochiInPool(t: Double) -> some View {
-        let sc   = CGFloat(engine.ageScale())
-        let sprH = sc * 16
-        let topPad = max(2, waterY - sprH * 0.57)
-        let frame: Frame = Int(t * 4) % 2 == 0 ? .happyA : .happyB
-        return PixelSpriteView(frame: frame, scale: sc, overrides: engine.breedOverrides)
-            .frame(width: panelW, alignment: .center)
-            .padding(.top, topPad)
-            .frame(width: panelW, height: panelH, alignment: .topLeading)
-            .animation(.easeIn(duration: 0.3), value: engine.swimActive)
-    }
 
     // Semi-transparent blue gradient band: waterY → wallY (shows Mochi's submerged mid-section)
     private var waterBodyView: some View {

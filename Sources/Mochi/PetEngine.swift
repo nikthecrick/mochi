@@ -176,6 +176,8 @@ final class PetEngine: ObservableObject {
     var devMode = false
     var onDeath: ((PetModel) -> Void)?
     var onEatFile: ((URL) -> Void)?      // AppDelegate trashes the eaten file
+    var onSwimStart: (() -> Void)?       // pool panel → orderFrontRegardless
+    var onSwimEnd: (() -> Void)?         // pet panel → orderFrontRegardless
     weak var sound: SoundBank?
 
     private var timer: Timer?
@@ -468,6 +470,7 @@ final class PetEngine: ObservableObject {
         spawn(.sparkle, 2)                              // Mochi: splash excitement
         print("Mochi: \(model.name) is taking a dip in the pool")
         sound?.play(.sleep)   // whoosh: dive
+        onSwimStart?()
         save()
     }
 
@@ -480,6 +483,7 @@ final class PetEngine: ObservableObject {
         sound?.play(.wake)
         spawn(.heart, 2)     // happy after the dip
         spawn(.sparkle, 2)
+        onSwimEnd?()
         // walk away from the pool a little
         walkDirX = Bool.random() ? 1 : -1
         walkDirY = 0

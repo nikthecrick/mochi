@@ -86,6 +86,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         brain.pet = engine
         brain.start()
 
+        // Bring pool in front when swimming starts so its stone wall covers Mochi's feet;
+        // return pet to front when swim ends so the controls/bubbles stay reachable.
+        engine.onSwimStart = { [weak self] in
+            DispatchQueue.main.async { self?.poolPanel?.orderFrontRegardless() }
+        }
+        engine.onSwimEnd = { [weak self] in
+            DispatchQueue.main.async { self?.panel?.orderFrontRegardless() }
+        }
+
         // restore a previously placed pool
         if engine.model.poolOwned == true { givePool(restore: true) }
 
