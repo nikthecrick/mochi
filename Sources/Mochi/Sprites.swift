@@ -196,24 +196,20 @@ enum Sprites {
         b.rect(3, 12, 2, 1, "J"); b.rect(11, 12, 2, 1, "J")
         b.rect(5, 13, 6, 1, "J")                            // row 13 inner
 
-        // ── Dark water body (K) ──
-        b.rect(5, 3, 6, 1, "K")
-        b.rect(4, 4, 8, 1, "K")
-        b.rect(3, 5, 10, 6, "K")  // rows 5-10
-        b.rect(4, 11, 8, 1, "K")
-        b.rect(5, 12, 6, 1, "K")
+        // ── Water body: bright blue (A) upper half, deep shadow (K) lower half ──
+        b.rect(5, 3, 6, 1, "A")            // row 3 — top water, light
+        b.rect(4, 4, 8, 1, "A")            // row 4
+        b.rect(3, 5, 10, 3, "A")           // rows 5-7 — still bright
+        b.rect(3, 8, 10, 3, "K")           // rows 8-10 — deep shadow
+        b.rect(4, 11, 8, 1, "K")           // row 11
+        b.rect(5, 12, 6, 1, "K")           // row 12
 
-        // ── Blue sky reflection (A) in upper water area ──
-        b.rect(5, 4, 5, 2, "A")                // main patch rows 4-5
-        b.p(4, 5, "A")                          // extend left
-        b.p(10, 4, "A"); b.p(11, 4, "A")       // right glimmer row 4
-        b.p(10, 5, "A"); b.p(9, 6, "A")        // scatter
-
-        // ── Sparkle highlights (W) ──
-        b.p(6, 4, "W")
-        b.p(5, 5, "W")
-        b.p(11, 6, "W")
-        b.p(7, 10, "W")
+        // ── Sparkle highlights (W) on the bright blue surface ──
+        b.p(6, 3, "W")
+        b.p(5, 4, "W"); b.p(10, 4, "W")
+        b.p(4, 5, "W"); b.p(9, 5, "W")
+        b.p(7, 6, "W"); b.p(11, 6, "W")
+        b.p(8, 9, "W")                     // sparkle in dark water
 
         // ── Warm light on top rim ──
         b.rect(5, 1, 3, 1, "Y")   // golden glint on top cap

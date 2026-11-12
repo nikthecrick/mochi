@@ -152,6 +152,8 @@ final class PetEngine: ObservableObject {
     @Published var swimUntil: Date?
     @Published var walkToPool = false
     @Published var poolSplashUntil: Date? = nil  // non-nil while pool splash rings play
+    /// True while the user is dragging Mochi and the pet centre overlaps the pool.
+    @Published var isHoveringPool = false
     /// Current pet window centre (screen coords), kept fresh by the app.
     var petPos: (x: Double, y: Double)?
     /// Where pooped files get restored to (default: Desktop).

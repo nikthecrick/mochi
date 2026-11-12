@@ -281,9 +281,24 @@ struct PetRootView: View {
             earGlow(frame: frame, t: t)
             // retro temp display, painted directly on the egg shell
             if mood == .egg || mood == .hatch { eggTempOverlay(frame: frame) }
-            // Water immersion overlay — fades in when Mochi enters the pool, out when dragged off.
-            // Gradient covers bottom ~55% of the sprite, masked to sprite pixels so it
-            // doesn't bleed into transparent areas of the panel.
+            // Hover preview — lighter tint while dragging over the pool before releasing.
+            // Covers only the bottom ~32% of the sprite so it feels like splashing your feet in.
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 0.47, green: 0.75, blue: 1.0).opacity(0), location: 0),
+                    .init(color: Color(red: 0.47, green: 0.75, blue: 1.0).opacity(0.20), location: 0.5),
+                    .init(color: Color(red: 0.30, green: 0.60, blue: 0.95).opacity(0.38), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(width: 16.0 * scale, height: 16.0 * scale * 0.35)
+            .frame(width: 16.0 * scale, height: 16.0 * scale, alignment: .bottom)
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides))
+            .opacity(engine.isHoveringPool && !engine.swimActive ? 1 : 0)
+            .animation(.easeInOut(duration: 0.25), value: engine.isHoveringPool)
+            .allowsHitTesting(false)
+            // Full swim overlay — fades in when Mochi enters the pool, out when dragged off.
+            // Covers bottom ~55% of the sprite, masked to actual sprite pixels.
             LinearGradient(
                 stops: [
                     .init(color: Color(red: 0.28, green: 0.65, blue: 0.95).opacity(0), location: 0),
@@ -305,15 +320,19 @@ struct PetRootView: View {
         .overlay(
             DragArea(
                 onDrag: { dx, dy in
-                    engine.dragged = true          // dangling-leg wiggle while picked up
+                    engine.dragged = true
                     engine.walkUntil = nil
                     if engine.swimActive { engine.swimUntil = Date() }  // drag off pool fades water out
-                    dragDelta(dx, dy)
+                    dragDelta(dx, dy)  // updates petPos → AppDelegate recomputes isHoveringPool
                 },
                 onRelease: { moved in
+                    let droppedOnPool = engine.isHoveringPool
                     engine.dragged = false
-                    if moved { settle() }
-                    else if mood == .egg { eggDetail.toggle() }   // click anywhere on the egg -> details
+                    engine.isHoveringPool = false
+                    if moved {
+                        settle()
+                        if droppedOnPool { engine.startSwim() }  // immediate splash, no walk needed
+                    } else if mood == .egg { eggDetail.toggle() }
                     else { engine.pat(); engine.easterEggClick() }
                 },
                 onRightClick: { popMenu() },

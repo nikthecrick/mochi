@@ -156,6 +156,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         p.setFrameOrigin(o)
         engine.petPos = centre(of: p.frame)
+        // Keep hover state live so the view can show the pool-entry preview tint.
+        if engine.dragged, let pool = engine.poolPoint() {
+            let pos = engine.petPos!
+            let dx = pos.x - pool.x, dy = pos.y - pool.y
+            engine.isHoveringPool = dx * dx + dy * dy < 95 * 95
+        }
     }
 
     private func settleWindow() {
