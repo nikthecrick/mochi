@@ -86,9 +86,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         brain.pet = engine
         brain.start()
 
-        // On swim start keep pool visible; return focus to pet when done.
+        // Pet must be in front while swimming so the swimmer sprite is fully visible.
+        // The pool bowl shows through the pet panel's transparent pixels.
         engine.onSwimStart = { [weak self] in
-            DispatchQueue.main.async { self?.poolPanel?.orderFrontRegardless() }
+            DispatchQueue.main.async { self?.panel?.orderFrontRegardless() }
         }
         engine.onSwimEnd = { [weak self] in
             DispatchQueue.main.async { self?.panel?.orderFrontRegardless() }
