@@ -154,6 +154,8 @@ final class PetEngine: ObservableObject {
     @Published var poolSplashUntil: Date? = nil  // non-nil while pool splash rings play
     /// True while the user is dragging Mochi and the pet centre overlaps the pool.
     @Published var isHoveringPool = false
+    /// Timestamp of the most recent swim start — used for the submerge entry animation.
+    var swimStartedAt: Date? = nil
     /// Current pet window centre (screen coords), kept fresh by the app.
     var petPos: (x: Double, y: Double)?
     /// Where pooped files get restored to (default: Desktop).
@@ -467,6 +469,7 @@ final class PetEngine: ObservableObject {
         walkUntil = nil
         walkToPool = false
         swimUntil = now.addingTimeInterval(Double.random(in: 8...16))
+        swimStartedAt = now
         model.happiness = min(100, model.happiness + 8)
         poolSplashUntil = now.addingTimeInterval(1.2)   // pool shows splash rings
         spawn(.sparkle, 2)                              // Mochi: splash excitement

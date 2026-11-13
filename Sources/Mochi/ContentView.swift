@@ -297,26 +297,27 @@ struct PetRootView: View {
             .opacity(engine.isHoveringPool && !engine.swimActive ? 1 : 0)
             .animation(.easeInOut(duration: 0.25), value: engine.isHoveringPool)
             .allowsHitTesting(false)
-            // Full swim overlay — fades in when Mochi enters the pool, out when dragged off.
-            // Covers bottom ~55% of the sprite, masked to actual sprite pixels.
+            // Swim water overlay — sharp waterline at ~56% height; opaque deep-blue at bottom.
+            // New breaststroke sprite has full body pixels so the gradient masks correctly.
             LinearGradient(
                 stops: [
-                    .init(color: Color(red: 0.28, green: 0.65, blue: 0.95).opacity(0), location: 0),
-                    .init(color: Color(red: 0.28, green: 0.65, blue: 0.95).opacity(0.28), location: 0.45),
-                    .init(color: Color(red: 0.15, green: 0.45, blue: 0.85).opacity(0.55), location: 1),
+                    .init(color: Color(red: 0.28, green: 0.65, blue: 0.95).opacity(0),    location: 0.50),
+                    .init(color: Color(red: 0.28, green: 0.65, blue: 0.95).opacity(0.42), location: 0.62),
+                    .init(color: Color(red: 0.12, green: 0.42, blue: 0.88).opacity(0.82), location: 1.00),
                 ],
                 startPoint: .top, endPoint: .bottom
             )
-            .frame(width: 16.0 * scale, height: 16.0 * scale * 0.6)
-            .frame(width: 16.0 * scale, height: 16.0 * scale, alignment: .bottom)
+            .frame(width: 16.0 * scale, height: 16.0 * scale)
             .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides))
             .opacity(engine.swimActive ? 1 : 0)
             .animation(.easeInOut(duration: 0.5), value: engine.swimActive)
             .allowsHitTesting(false)
+            // Submerge entry flash: Mochi plunges under on drop, rises back up (~0.9s).
+            submergeFlash(frame: frame, scale: scale, t: t)
         }
         .scaleEffect(x: stretchX(t: t), y: stretchY(t: t))
         .offset(x: wobbleX(mood: mood, t: t),
-                y: bobY(mood: mood, t: t) + jumpY(t: t))
+                y: bobY(mood: mood, t: t) + jumpY(t: t) + swimSinkY(t: t))
         .overlay(
             DragArea(
                 onDrag: { dx, dy in
@@ -780,6 +781,13 @@ struct PetRootView: View {
     }
 
     private func bobY(mood: Mood, t: Double) -> CGFloat {
+        if engine.swimActive {
+            // Suppress bob during the entry sink; start gentle bob once surfaced.
+            guard let start = engine.swimStartedAt else { return 2.5 * CGFloat(sin(t * 2.2)) }
+            let elapsed = max(0, t - start.timeIntervalSinceReferenceDate)
+            if elapsed < 0.9 { return 0 }  // entry phase handles offset via swimSinkY
+            return 2.5 * CGFloat(sin(t * 2.2))
+        }
         if engine.isWalking || engine.growActive {   // trotty bounce
             return Int(t * 6) % 2 == 0 ? -1 : 0
         }
@@ -787,6 +795,38 @@ struct PetRootView: View {
         if mood == .happy { return 0 }             // still happy face
         if mood == .asleep { return 1 }
         return step == 0 ? -2 : 0
+    }
+
+    /// Sink-then-rise offset on pool entry (0→+14→0 px over 0.9 s).
+    private func swimSinkY(t: Double) -> CGFloat {
+        guard engine.swimActive, let start = engine.swimStartedAt else { return 0 }
+        let elapsed = max(0, t - start.timeIntervalSinceReferenceDate)
+        if elapsed >= 0.9 { return 0 }
+        if elapsed < 0.3 { return CGFloat(elapsed / 0.3 * 14) }
+        if elapsed < 0.6 { return 14 }
+        return CGFloat((1.0 - (elapsed - 0.6) / 0.3) * 14)
+    }
+
+    /// Full-body blue flash that fades as Mochi surfaces (~0.9 s after entry).
+    @ViewBuilder
+    private func submergeFlash(frame: Frame, scale: CGFloat, t: Double) -> some View {
+        if engine.swimActive, let start = engine.swimStartedAt {
+            let elapsed = max(0, t - start.timeIntervalSinceReferenceDate)
+            let opacity: Double = {
+                if elapsed >= 0.9 { return 0 }
+                if elapsed < 0.2 { return elapsed / 0.2 }
+                if elapsed < 0.5 { return 1.0 }
+                return 1.0 - (elapsed - 0.5) / 0.4
+            }()
+            if opacity > 0 {
+                Rectangle()
+                    .fill(Color(red: 0.12, green: 0.42, blue: 0.88).opacity(0.78 * opacity))
+                    .frame(width: 16.0 * scale, height: 16.0 * scale)
+                    .mask(PixelSpriteView(frame: frame, scale: scale,
+                                         overrides: engine.breedOverrides))
+                    .allowsHitTesting(false)
+            }
+        }
     }
 
     private func wobbleX(mood: Mood, t: Double) -> CGFloat {

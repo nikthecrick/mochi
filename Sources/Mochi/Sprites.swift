@@ -219,24 +219,36 @@ enum Sprites {
         b.p(3, 15, "K"); b.rect(4, 15, 8, 1, "K"); b.p(12, 15, "K")
     }
 
-    /// Swimming: head above the water band.
+    /// Swimming: full body, breaststroke arms alternate each frame.
+    /// Water tint (below waist) is applied by the ContentView swim gradient overlay —
+    /// no water pixels baked into the sprite to avoid double-blue.
     private static func swimmer(_ b: Builder, phase: Int) {
         ear(b, 4, "B", 0)
         ear(b, 9, "B", 0)
+        // Head + full body (same silhouette as idleA — gradient needs pixels to mask)
         b.rect(4, 5, 8, 1, "K")
-        b.rect(3, 6, 1, 3, "K")
-        b.rect(12, 6, 1, 3, "K")
-        b.rect(4, 6, 8, 3, "B")
+        b.rect(3, 6, 1, 8, "K"); b.rect(12, 6, 1, 8, "K")
+        b.rect(4, 14, 8, 1, "K")
+        b.rect(4, 6, 8, 8, "B")
+        b.rect(5, 10, 4, 3, "W")           // belly
+        b.rect(4, 13, 2, 1, "S"); b.rect(10, 13, 2, 1, "S")  // feet
+        b.p(3, 14, "K"); b.p(12, 14, "K")  // bottom corners
+        // Face (phase 1 = squint-effort while pulling)
         if phase == 0 {
-            b.rect(5, 7, 2, 1, "E"); b.rect(9, 7, 2, 1, "E")
+            b.rect(5, 7, 2, 2, "E"); b.rect(9, 7, 2, 2, "E")
         } else {
-            b.rect(5, 6, 2, 1, "E"); b.rect(9, 6, 2, 1, "E")
+            b.rect(5, 7, 2, 1, "E"); b.rect(9, 7, 2, 1, "E")
         }
-        b.rect(7, 8, 2, 1, "K")          // little smile
-        b.rect(2, 9, 12, 1, "K")          // water surface
-        b.rect(2, 10, 12, 4, "A")
-        if phase == 0 { b.p(4, 11, "W"); b.p(11, 12, "W") }
-        else { b.p(6, 12, "W"); b.p(9, 11, "W") }
+        b.p(4, 9, "P"); b.p(11, 9, "P")
+        b.rect(7, 9, 2, 1, "K")
+        // Arms — breaststroke: phase 0 = reaching forward wide, phase 1 = sweeping back
+        if phase == 0 {
+            b.p(2, 9, "K"); b.p(2, 10, "S"); b.p(1, 10, "K"); b.p(0, 11, "W")
+            b.p(13, 9, "K"); b.p(13, 10, "S"); b.p(14, 10, "K"); b.p(15, 11, "W")
+        } else {
+            b.p(1, 10, "K"); b.rect(2, 10, 1, 2, "S"); b.p(2, 12, "W")
+            b.p(14, 10, "K"); b.rect(13, 10, 1, 2, "S"); b.p(13, 12, "W")
+        }
     }
 
     // MARK: frames
