@@ -314,10 +314,12 @@ struct PetRootView: View {
             .allowsHitTesting(false)
             // Submerge entry flash: Mochi plunges under on drop, rises back up (~0.9s).
             submergeFlash(frame: frame, scale: scale, t: t)
+            // Deep-dive overlay: full blue fade-in/out during the dive window.
+            diveOverlay(frame: frame, scale: scale, t: t)
         }
         .scaleEffect(x: stretchX(t: t), y: stretchY(t: t))
         .offset(x: wobbleX(mood: mood, t: t),
-                y: bobY(mood: mood, t: t) + jumpY(t: t) + swimSinkY(t: t))
+                y: bobY(mood: mood, t: t) + jumpY(t: t) + swimSinkY(t: t) + diveY(t: t))
         .overlay(
             DragArea(
                 onDrag: { dx, dy in
@@ -782,7 +784,12 @@ struct PetRootView: View {
 
     private func bobY(mood: Mood, t: Double) -> CGFloat {
         if engine.swimActive {
-            // Suppress bob during the entry sink; start gentle bob once surfaced.
+            // Suppress bob during entry and during dive (diveY handles offset then).
+            if engine.swimDiving,
+               let ds = engine.diveStartedAt, let de = engine.diveEndAt,
+               t >= ds.timeIntervalSinceReferenceDate && t < de.timeIntervalSinceReferenceDate {
+                return 0
+            }
             guard let start = engine.swimStartedAt else { return 2.5 * CGFloat(sin(t * 2.2)) }
             let elapsed = max(0, t - start.timeIntervalSinceReferenceDate)
             if elapsed < 0.9 { return 0 }  // entry phase handles offset via swimSinkY
@@ -805,6 +812,50 @@ struct PetRootView: View {
         if elapsed < 0.3 { return CGFloat(elapsed / 0.3 * 14) }
         if elapsed < 0.6 { return 14 }
         return CGFloat((1.0 - (elapsed - 0.6) / 0.3) * 14)
+    }
+
+    /// Deep-dive offset: Mochi sinks 32 px over 0.8 s, holds, then rises over 1.0 s.
+    private func diveY(t: Double) -> CGFloat {
+        guard engine.swimDiving,
+              let ds = engine.diveStartedAt,
+              let de = engine.diveEndAt else { return 0 }
+        let dst = ds.timeIntervalSinceReferenceDate
+        let det = de.timeIntervalSinceReferenceDate
+        let sinkDur = 0.8, riseDur = 1.0, depth: CGFloat = 32
+        if t < dst { return 0 }
+        let sinceDown = t - dst
+        if sinceDown < sinkDur { return CGFloat(sinceDown / sinkDur) * depth }
+        if t < det - riseDur { return depth }
+        if t < det { return CGFloat((det - t) / riseDur) * depth }
+        return 0
+    }
+
+    /// Full-body blue overlay that fades in as Mochi dives and out as they surface.
+    @ViewBuilder
+    private func diveOverlay(frame: Frame, scale: CGFloat, t: Double) -> some View {
+        if engine.swimDiving,
+           let ds = engine.diveStartedAt,
+           let de = engine.diveEndAt {
+            let dst = ds.timeIntervalSinceReferenceDate
+            let det = de.timeIntervalSinceReferenceDate
+            let sinkDur = 0.8, riseDur = 1.0
+            let opacity: Double = {
+                if t < dst { return 0 }
+                let sinceDown = t - dst
+                if sinceDown < sinkDur { return sinceDown / sinkDur }
+                if t < det - riseDur { return 1.0 }
+                if t < det { return (det - t) / riseDur }
+                return 0
+            }()
+            if opacity > 0 {
+                Rectangle()
+                    .fill(Color(red: 0.12, green: 0.42, blue: 0.88).opacity(0.90 * opacity))
+                    .frame(width: 16.0 * scale, height: 16.0 * scale)
+                    .mask(PixelSpriteView(frame: frame, scale: scale,
+                                         overrides: engine.breedOverrides))
+                    .allowsHitTesting(false)
+            }
+        }
     }
 
     /// Full-body blue flash that fades as Mochi surfaces (~0.9 s after entry).

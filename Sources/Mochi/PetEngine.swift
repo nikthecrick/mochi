@@ -156,6 +156,12 @@ final class PetEngine: ObservableObject {
     @Published var isHoveringPool = false
     /// Timestamp of the most recent swim start — used for the submerge entry animation.
     var swimStartedAt: Date? = nil
+    /// True when this swim includes a full deep-dive (randomly ~40% of swims).
+    var swimDiving = false
+    /// When the dive sink begins (after entry phase).
+    var diveStartedAt: Date? = nil
+    /// When surfacing begins (dive ends, Mochi rises back up).
+    var diveEndAt: Date? = nil
     /// Current pet window centre (screen coords), kept fresh by the app.
     var petPos: (x: Double, y: Double)?
     /// Where pooped files get restored to (default: Desktop).
@@ -470,6 +476,13 @@ final class PetEngine: ObservableObject {
         walkToPool = false
         swimUntil = now.addingTimeInterval(Double.random(in: 8...16))
         swimStartedAt = now
+        // ~40% of swims include a full deep-dive before surfacing
+        swimDiving = Double.random(in: 0...1) < 0.4
+        if swimDiving {
+            let diveStart = now.addingTimeInterval(1.2)   // after entry phase + brief surface pause
+            diveStartedAt = diveStart
+            diveEndAt = diveStart.addingTimeInterval(Double.random(in: 1.5...3.0))
+        }
         model.happiness = min(100, model.happiness + 8)
         poolSplashUntil = now.addingTimeInterval(1.2)   // pool shows splash rings
         spawn(.sparkle, 2)                              // Mochi: splash excitement
@@ -482,6 +495,7 @@ final class PetEngine: ObservableObject {
     private func advanceSwim() {
         guard let until = swimUntil, now >= until, !swimActive else { return }
         swimUntil = nil
+        swimDiving = false; diveStartedAt = nil; diveEndAt = nil
         model.happiness = min(100, model.happiness + 5)  // refreshed bonus
         poolSplashUntil = now.addingTimeInterval(1.2)    // exit splash
         print("Mochi: \(model.name) got out of the pool, refreshed")
