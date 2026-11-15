@@ -31,7 +31,8 @@ enum Pal {
         "N": RGBA(r: 0.48, g: 0.78, b: 0.31),    // grass
         "O": RGBA(r: 0.98, g: 0.97, b: 0.93),    // egg shell
         "M": RGBA(r: 0.84, g: 0.55, b: 0.35),   // meat / brown
-        "A": RGBA(r: 0.47, g: 0.72, b: 0.98),   // water
+        "A": RGBA(r: 0.47, g: 0.72, b: 0.98),   // water (surface / light blue)
+        "L": RGBA(r: 0.28, g: 0.58, b: 0.92),   // water depth (matches wet-Mochi gradient)
         "V": RGBA(r: 0.68, g: 0.42, b: 1.00),   // violet / magic
         "C": RGBA(r: 0.68, g: 0.36, b: 0.12),   // copper / rust (pool rim)
         "J": RGBA(r: 0.36, g: 0.17, b: 0.05),   // dark rust (pool inner shadow)
@@ -196,13 +197,13 @@ enum Sprites {
         b.rect(3, 12, 2, 1, "J"); b.rect(11, 12, 2, 1, "J")
         b.rect(5, 13, 6, 1, "J")                            // row 13 inner
 
-        // ── Water body: bright blue (A) upper half, deep shadow (K) lower half ──
-        b.rect(5, 3, 6, 1, "A")            // row 3 — top water, light
+        // ── Water body: light blue (A) top, deeper blue (L) below — same family as wet-Mochi ──
+        b.rect(5, 3, 6, 1, "A")            // row 3 — surface, lightest
         b.rect(4, 4, 8, 1, "A")            // row 4
-        b.rect(3, 5, 10, 3, "A")           // rows 5-7 — still bright
-        b.rect(3, 8, 10, 3, "K")           // rows 8-10 — deep shadow
-        b.rect(4, 11, 8, 1, "K")           // row 11
-        b.rect(5, 12, 6, 1, "K")           // row 12
+        b.rect(3, 5, 10, 3, "A")           // rows 5-7 — bright blue
+        b.rect(3, 8, 10, 3, "L")           // rows 8-10 — deeper blue
+        b.rect(4, 11, 8, 1, "L")           // row 11
+        b.rect(5, 12, 6, 1, "L")           // row 12
 
         // ── Sparkle highlights (W) on the bright blue surface ──
         b.p(6, 3, "W")
