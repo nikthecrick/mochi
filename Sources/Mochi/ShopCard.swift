@@ -12,6 +12,8 @@ struct ShopCard: View {
     var onRemoveBed: () -> Void = {}
     var onGiveTree: () -> Void = {}
     var onRemoveTree: () -> Void = {}
+    var onGiveSandbox: () -> Void = {}
+    var onRemoveSandbox: () -> Void = {}
 
     @State private var tab: ShopTab = .shop
 
@@ -71,6 +73,7 @@ struct ShopCard: View {
             PoolItem(engine: engine, onGive: onGivePool, onRemove: onRemovePool)
             BedItem(engine: engine, onGive: onGiveBed, onRemove: onRemoveBed)
             TreeItem(engine: engine, onGive: onGiveTree, onRemove: onRemoveTree)
+            SandboxItem(engine: engine, onGive: onGiveSandbox, onRemove: onRemoveSandbox)
         }
     }
 
@@ -492,5 +495,88 @@ private struct TreeItem: View {
             PixelSpriteView(frame: .tree, scale: 2.0)
         }
         .shadow(color: Color.green.opacity(0.4), radius: 5)
+    }
+}
+
+private struct SandboxItem: View {
+    @ObservedObject var engine: PetEngine
+    var onGive: () -> Void
+    var onRemove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                sandboxIcon
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("SANDBOX")
+                            .font(PixelFont.font(8))
+                            .foregroundColor(.white)
+                        if engine.model.sandboxOwned == true {
+                            Text("PLACED")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundColor(Color(red: 1.0, green: 0.85, blue: 0.40))
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Capsule().fill(Color.yellow.opacity(0.25)))
+                        }
+                    }
+                    Text("Play with other Mochis nearby via MultipeerConnectivity.")
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+            }
+
+            if engine.hasGadget {
+                Text("Place the sandbox to discover nearby Mochi owners. Tap a friend's icon to share your Mochi — they appear as a guest and yours walks over to play.")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    Spacer()
+                    if engine.model.sandboxOwned == true {
+                        Button { onRemove() } label: {
+                            Text("REMOVE")
+                                .font(PixelFont.font(7))
+                                .foregroundColor(.white.opacity(0.75))
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(Capsule().fill(Color.white.opacity(0.1)))
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button { onGive() } label: {
+                            Text("PLACE SANDBOX")
+                                .font(PixelFont.font(7))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(Capsule().fill(Color(red: 0.98, green: 0.87, blue: 0.42)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            } else {
+                Text("Keep feeding \(engine.model.name) to unlock the gadget stage.")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.42))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.yellow.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(
+            engine.hasGadget ? Color.yellow.opacity(0.28) : Color.white.opacity(0.08)))
+    }
+
+    private var sandboxIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.95, green: 0.82, blue: 0.40),
+                             Color(red: 0.80, green: 0.65, blue: 0.25)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 38, height: 38)
+            PixelSpriteView(frame: .sandbox, scale: 2.0)
+        }
+        .shadow(color: Color.yellow.opacity(0.4), radius: 5)
     }
 }

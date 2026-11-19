@@ -38,6 +38,9 @@ enum Pal {
         "J": RGBA(r: 0.36, g: 0.17, b: 0.05),   // dark rust (pool inner shadow)
         "I": RGBA(r: 0.62, g: 0.87, b: 0.74),   // fixed mint blanket (not breed-overridden)
         "H": RGBA(r: 0.44, g: 0.71, b: 0.58),   // fixed mint shade (blanket edge)
+        "X": RGBA(r: 0.95, g: 0.87, b: 0.62),   // sand (warm pale yellow)
+        "Q": RGBA(r: 0.80, g: 0.68, b: 0.42),   // sand shade / wet sand
+        "F": RGBA(r: 0.98, g: 0.42, b: 0.42),   // toy red (bucket)
     ]
     static let fallback = RGBA(r: 1, g: 0, b: 1)
     static func color(_ c: Character) -> Color {
@@ -67,6 +70,7 @@ enum Frame: String, CaseIterable {
     case walkLegs2A, walkLegs2B, dangle2A, dangle2B
     case swimA, swimB, pool
     case bed, bedSleepA, bedSleepB, tree, snackFall
+    case sandbox
     // Play tricks:
     case spinA, spinB, saltoA, saltoB, zoomA, zoomB
 }
@@ -328,6 +332,29 @@ enum Sprites {
         b.p(6, 5, "W")
     }
 
+    private static func sandboxSprite(_ b: Builder) {
+        // Wooden frame corner posts
+        b.p(2, 3, "C"); b.p(13, 3, "C")
+        b.p(2, 12, "C"); b.p(13, 12, "C")
+        // Wood rails
+        b.rect(3, 3, 10, 1, "M")    // top
+        b.rect(3, 12, 10, 1, "M")   // bottom
+        b.rect(2, 4, 1, 8, "M")     // left
+        b.rect(13, 4, 1, 8, "M")    // right
+        // Sand fill
+        b.rect(3, 4, 10, 8, "X")
+        // Sand texture
+        b.p(5, 6, "Q"); b.p(10, 7, "Q"); b.p(7, 9, "Q")
+        b.p(4, 10, "Q"); b.p(11, 5, "Q")
+        // Red bucket (top-right corner of sand)
+        b.rect(10, 5, 2, 2, "F")
+        b.p(10, 4, "M"); b.p(11, 4, "M")   // bucket handle
+        b.p(10, 7, "Q")                      // bucket base shadow
+        // Shovel handle (bottom-left)
+        b.p(5, 10, "M"); b.p(5, 11, "M")
+        b.p(4, 9, "Q"); b.p(5, 9, "Q"); b.p(6, 9, "Q")  // blade
+    }
+
     // MARK: frames
 
     static func grid(_ f: Frame) -> SpriteGrid {
@@ -533,6 +560,8 @@ enum Sprites {
             snackTree(b)
         case .snackFall:
             snackFallApple(b)
+        case .sandbox:
+            sandboxSprite(b)
         case .ghost:
             body(b, skin: "G", earL: 4, earR: 9, belly: true, blush: false, feet: "D")
             b.p(5, 7, "E"); b.p(6, 8, "E"); b.p(6, 7, "E"); b.p(5, 8, "E")   // X eyes

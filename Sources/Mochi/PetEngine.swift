@@ -58,6 +58,10 @@ struct PetModel: Codable {
     var treeOwned: Bool?          // stage 3 gadget: the snack tree
     var treeX: Double = -1
     var treeY: Double = -1
+    var sandboxOwned: Bool?       // sandbox gadget: the play pit
+    var sandboxX: Double = -1
+    var sandboxY: Double = -1
+    var lentOut: Bool?            // true while this Mochi is on another machine (stats frozen)
     var chub: Double?             // 0...100: eating too much / not playing enough
     var lastEaten: [String]?      // file names in the belly, waiting to be pooped
     var lastMealAt: Date?
@@ -209,6 +213,12 @@ final class PetEngine: ObservableObject {
     var walkToTree = false
     var onTreeSnackStart: (() -> Void)?
     var onTreeSnackEnd: (() -> Void)?
+    // Sandbox
+    @Published var isHoveringSandbox = false
+    var walkToSandbox = false
+    @Published var sandboxGuests: [PetModel] = []
+    @Published var sandboxPlayActive = false
+    var sandboxSession: SandboxSession?
     weak var sound: SoundBank?
 
     private var timer: Timer?
@@ -379,6 +389,8 @@ final class PetEngine: ObservableObject {
             }
         }
         guard !model.dead else { return }
+        // Lent out: Mochi is on another machine — freeze all stats until returned.
+        guard model.lentOut != true else { return }
 
         let asleep = model.asleep
         let deep = model.deepSleep
@@ -417,7 +429,7 @@ final class PetEngine: ObservableObject {
     func maybeWalk(probability: Double? = nil) {
         let p = probability ?? PetRates.walkChanceSetting()
         guard hasLegs, !model.dead, !model.asleep, !dragged, !isWalking,
-              !poopActive, !jumpActive, !swimActive, !bedSleepActive, !treeSnackActive,
+              !poopActive, !jumpActive, !swimActive, !bedSleepActive, !treeSnackActive, !sandboxPlayActive,
               Double.random(in: 0..<1) < p else { return }
         walkSpeed = Double.random(in: PetRates.walkSpeedMin...PetRates.walkSpeedMax)
         // gadget pets with a pool sometimes stroll over for a dip
@@ -434,10 +446,15 @@ final class PetEngine: ObservableObject {
         } else if model.treeOwned == true, model.hunger < 55, let pos = petPos,
            let tree = treePoint(), Double.random(in: 0..<1) < 0.30 {
             let dist = hypot(tree.x - pos.x, tree.y - pos.y)
-            walkToTree = true; walkToPool = false; walkToBed = false
+            walkToTree = true; walkToPool = false; walkToBed = false; walkToSandbox = false
+            walkUntil = now.addingTimeInterval(max(10, min(90, dist / walkSpeed + 4)))
+        } else if model.sandboxOwned == true, !sandboxGuests.isEmpty, let pos = petPos,
+           let sb = sandboxPoint(), Double.random(in: 0..<1) < 0.35 {
+            let dist = hypot(sb.x - pos.x, sb.y - pos.y)
+            walkToSandbox = true; walkToPool = false; walkToBed = false; walkToTree = false
             walkUntil = now.addingTimeInterval(max(10, min(90, dist / walkSpeed + 4)))
         } else {
-            walkToPool = false; walkToBed = false; walkToTree = false
+            walkToPool = false; walkToBed = false; walkToTree = false; walkToSandbox = false
             walkUntil = now.addingTimeInterval(Double.random(in: PetRates.walkSecondsMin...PetRates.walkSecondsMax))
         }
         if Bool.random() {          // horizontal or vertical stroll
@@ -478,12 +495,12 @@ final class PetEngine: ObservableObject {
         }
         guard let until = walkUntil, now < until else {
             if walkUntil != nil {
-                walkUntil = nil; walkToPool = false; walkToBed = false; walkToTree = false
+                walkUntil = nil; walkToPool = false; walkToBed = false; walkToTree = false; walkToSandbox = false
                 return .ended
             }
             return .idle
         }
-        if swimActive || bedSleepActive || treeSnackActive { return .idle }
+        if swimActive || bedSleepActive || treeSnackActive || sandboxPlayActive { return .idle }
         if walkToPool, let pos = petPos, let pool = poolPoint() {
             let dxv = pool.x - pos.x, dyv = pool.y - pos.y
             let dist = hypot(dxv, dyv)
@@ -502,6 +519,13 @@ final class PetEngine: ObservableObject {
             let dxv = tree.x - pos.x, dyv = tree.y - pos.y
             let dist = hypot(dxv, dyv)
             if dist < 60 { startTreeSnack(); return .ended }
+            let step = min(walkSpeed * dt, dist)
+            return .moving(dx: dxv / dist * step, dy: dyv / dist * step)
+        }
+        if walkToSandbox, let pos = petPos, let sb = sandboxPoint() {
+            let dxv = sb.x - pos.x, dyv = sb.y - pos.y
+            let dist = hypot(dxv, dyv)
+            if dist < 60 { startSandboxPlay(); return .ended }
             let step = min(walkSpeed * dt, dist)
             return .moving(dx: dxv / dist * step, dy: dyv / dist * step)
         }
@@ -637,6 +661,64 @@ final class PetEngine: ObservableObject {
         walkDirX = Bool.random() ? 1 : -1; walkDirY = 0
         walkUntil = now.addingTimeInterval(3)
         save()
+    }
+
+    // MARK: - Sandbox
+
+    func sandboxPoint() -> (x: Double, y: Double)? {
+        guard model.sandboxOwned == true, model.sandboxX >= 0, model.sandboxY >= 0 else { return nil }
+        return (model.sandboxX, model.sandboxY)
+    }
+
+    func startSandboxPlay() {
+        walkUntil = nil
+        walkToSandbox = false; walkToPool = false; walkToBed = false; walkToTree = false
+        sandboxPlayActive = true
+        spawn(.sparkle, 2)
+        sound?.play(.pat)
+    }
+
+    func endSandboxPlay() {
+        sandboxPlayActive = false
+        spawn(.heart, 1)
+        walkDirX = Bool.random() ? 1 : -1; walkDirY = 0
+        walkUntil = now.addingTimeInterval(3)
+    }
+
+    func lendMochi() {
+        model.lentOut = true
+        sandboxPlayActive = false
+        walkUntil = nil
+        save()
+    }
+
+    func returnMochi(updated: PetModel? = nil) {
+        if var returned = updated {
+            // Carry runtime-only fields that aren't sent over the wire
+            returned.lentOut = nil
+            returned.sandboxOwned = model.sandboxOwned
+            returned.sandboxX = model.sandboxX
+            returned.sandboxY = model.sandboxY
+            returned.windowX = model.windowX
+            returned.windowY = model.windowY
+            model = returned
+        } else {
+            model.lentOut = nil
+        }
+        spawn(.heart, 2)
+        save()
+    }
+
+    func addSandboxGuest(_ guest: PetModel) {
+        guard !sandboxGuests.contains(where: { $0.breedName == guest.breedName }) else { return }
+        sandboxGuests.append(guest)
+        // Host Mochi notices and walks to the sandbox
+        if !sandboxPlayActive, let pos = petPos, let sb = sandboxPoint() {
+            let dist = hypot(sb.x - pos.x, sb.y - pos.y)
+            walkToSandbox = true
+            walkSpeed = Double.random(in: PetRates.walkSpeedMin...PetRates.walkSpeedMax)
+            walkUntil = now.addingTimeInterval(max(10, min(90, dist / walkSpeed + 4)))
+        }
     }
 
     private func pruneParticles() {

@@ -312,6 +312,21 @@ struct PetRootView: View {
             .opacity(engine.isHoveringBed && !engine.bedSleepActive ? 1 : 0)
             .animation(.easeInOut(duration: 0.25), value: engine.isHoveringBed)
             .allowsHitTesting(false)
+            // Sandbox hover tint — warm sandy yellow shimmer
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 0.98, green: 0.90, blue: 0.40).opacity(0.32), location: 0),
+                    .init(color: Color(red: 0.95, green: 0.82, blue: 0.30).opacity(0.18), location: 0.5),
+                    .init(color: Color(red: 0.95, green: 0.75, blue: 0.20).opacity(0),    location: 1),
+                ],
+                startPoint: .bottom, endPoint: .top
+            )
+            .frame(width: 16.0 * scale, height: 16.0 * scale * 0.40)
+            .frame(width: 16.0 * scale, height: 16.0 * scale, alignment: .bottom)
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides))
+            .opacity(engine.isHoveringSandbox && !engine.sandboxPlayActive ? 1 : 0)
+            .animation(.easeInOut(duration: 0.25), value: engine.isHoveringSandbox)
+            .allowsHitTesting(false)
             // Warm cozy sleep glow — amber only on the head area, fades before the blanket.
             LinearGradient(
                 stops: [
@@ -347,6 +362,8 @@ struct PetRootView: View {
             diveOverlay(frame: frame, scale: scale, t: t)
             // Big Zzz overlay while sleeping in bed.
             bedZzzOverlay(t: t)
+            // Away overlay while lent out to another machine.
+            awayOverlay(t: t)
         }
         .scaleEffect(x: stretchX(t: t), y: stretchY(t: t))
         .offset(x: wobbleX(mood: mood, t: t),
@@ -356,21 +373,24 @@ struct PetRootView: View {
                 onDrag: { dx, dy in
                     engine.dragged = true
                     engine.walkUntil = nil
-                    engine.walkToBed = false; engine.walkToTree = false
+                    engine.walkToBed = false; engine.walkToTree = false; engine.walkToSandbox = false
                     if engine.swimActive { engine.swimUntil = Date() }  // drag off pool fades water out
-                    dragDelta(dx, dy)  // updates petPos → AppDelegate recomputes isHoveringPool/Bed/Tree
+                    dragDelta(dx, dy)  // updates petPos → AppDelegate recomputes isHoveringPool/Bed/Tree/Sandbox
                 },
                 onRelease: { moved in
-                    let droppedOnPool = engine.isHoveringPool
-                    let droppedOnBed = engine.isHoveringBed
+                    let droppedOnPool    = engine.isHoveringPool
+                    let droppedOnBed     = engine.isHoveringBed
+                    let droppedOnSandbox = engine.isHoveringSandbox
                     engine.dragged = false
                     engine.isHoveringPool = false
                     engine.isHoveringBed = false
                     engine.isHoveringTree = false
+                    engine.isHoveringSandbox = false
                     if moved {
                         settle()
-                        if droppedOnPool { engine.startSwim() }
-                        else if droppedOnBed { engine.startBedSleep() }
+                        if droppedOnPool       { engine.startSwim() }
+                        else if droppedOnBed   { engine.startBedSleep() }
+                        else if droppedOnSandbox { engine.startSandboxPlay() }
                     } else if engine.bedSleepActive { engine.tapDuringSleep() }
                     else if mood == .egg { eggDetail.toggle() }
                     else { engine.pat(); engine.easterEggClick() }
@@ -700,6 +720,10 @@ struct PetRootView: View {
         if engine.jumpActive && mood != .dead && mood != .egg && mood != .hatch {
             return fast ? .dangleA : .dangleB
         }
+        // Lent out: Mochi is visiting another machine — show dormant sleep pose
+        if engine.model.lentOut == true && mood != .dead && mood != .egg && mood != .hatch {
+            return p == 0 ? .sleepA : .sleepB
+        }
         // Sleeping in the cozy bed: Mochi face peeking above blanket
         if engine.bedSleepActive && mood != .dead && mood != .egg && mood != .hatch {
             return p == 0 ? .bedSleepA : .bedSleepB
@@ -824,7 +848,7 @@ struct PetRootView: View {
     }
 
     private func bobY(mood: Mood, t: Double) -> CGFloat {
-        if engine.bedSleepActive { return 0 }
+        if engine.bedSleepActive || engine.model.lentOut == true { return 0 }
         if engine.swimActive {
             // Suppress bob during entry and during dive (diveY handles offset then).
             if engine.swimDiving,
@@ -939,6 +963,19 @@ struct PetRootView: View {
                     .shadow(color: Color(red: 0.45, green: 0.25, blue: 0.90).opacity(0.70), radius: 4, y: 2)
                     .offset(x: 28 + z.3 * 0.5, y: -38 + z.3 + bob)
             }
+        }
+    }
+
+    /// Floating travel indicator while Mochi is lent out to another machine.
+    @ViewBuilder
+    private func awayOverlay(t: Double) -> some View {
+        if engine.model.lentOut == true {
+            let bob = CGFloat(sin(t * 1.0) * 2.5)
+            Text("✈︎")
+                .font(.system(size: 14))
+                .foregroundColor(Color(red: 0.55, green: 0.80, blue: 1.0))
+                .shadow(color: Color(red: 0.30, green: 0.55, blue: 0.90).opacity(0.60), radius: 4, y: 2)
+                .offset(x: 24, y: -32 + bob)
         }
     }
 
@@ -1397,6 +1434,154 @@ struct TreeRootView: View {
                 .opacity(opacity * 0.90)
         }
         .frame(width: panelSize, height: panelSize)
+    }
+}
+
+// MARK: - Sandbox (gadget: sand pit with MultipeerConnectivity guest Mochis)
+
+struct SandboxRootView: View {
+    @ObservedObject var engine: PetEngine
+    var dragDelta: (CGFloat, CGFloat) -> Void
+    var settle: () -> Void
+    var popMenu: () -> Void
+
+    private let spriteScale: CGFloat = 10
+    private let pad: CGFloat = 5
+    private var spriteSize: CGFloat { 16 * spriteScale }
+    private var panelW: CGFloat { 190 }
+    private var panelH: CGFloat { 220 }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.08)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
+            ZStack(alignment: .top) {
+                // Peer discovery area at top
+                peersArea(t: t)
+                    .frame(width: panelW, height: 50)
+
+                // Sandbox sprite + guest Mochis
+                ZStack {
+                    PixelSpriteView(frame: .sandbox, scale: spriteScale)
+                        .padding(pad)
+                    guestMochis(t: t)
+                    if engine.sandboxGuests.isEmpty && (engine.sandboxSession?.nearbyPeers.isEmpty ?? true) {
+                        lookingPulse(t: t)
+                    }
+                }
+                .frame(width: spriteSize + 2 * pad, height: spriteSize + 2 * pad)
+                .offset(y: 50)
+            }
+            .frame(width: panelW, height: panelH)
+            .contentShape(Rectangle())
+            .shadow(color: Color(red: 0.60, green: 0.45, blue: 0.15).opacity(0.40), radius: 12, y: 6)
+            .overlay(
+                DragArea(
+                    onDrag: { dx, dy in dragDelta(dx, dy) },
+                    onRelease: { moved in if moved { settle() } },
+                    onRightClick: { popMenu() }
+                )
+            )
+        }
+    }
+
+    // Nearby peer icons — tap to share your Mochi with that peer
+    @ViewBuilder
+    private func peersArea(t: Double) -> some View {
+        if let session = engine.sandboxSession, !session.nearbyPeers.isEmpty {
+            HStack(spacing: 10) {
+                ForEach(session.nearbyPeers, id: \.displayName) { peer in
+                    Button(action: { session.sendMochi(to: peer) }) {
+                        VStack(spacing: 3) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(red: 0.55, green: 0.82, blue: 0.60))
+                                    .frame(width: 26, height: 26)
+                                Text(String(peer.displayName
+                                    .replacingOccurrences(of: "Mochi-", with: "")
+                                    .prefix(1)).uppercased())
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            Text(peer.displayName.replacingOccurrences(of: "Mochi-", with: ""))
+                                .font(.system(size: 7))
+                                .foregroundColor(Color(white: 0.85))
+                                .lineLimit(1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Send your Mochi to \(peer.displayName.replacingOccurrences(of: "Mochi-", with: ""))")
+                }
+            }
+            .padding(.top, 8)
+            .frame(width: panelW, alignment: .center)
+        } else {
+            let alpha = 0.30 + 0.20 * sin(t * 1.4)
+            let label: String = {
+                if engine.model.lentOut == true { return "\(engine.model.name) is away visiting a friend" }
+                if !engine.sandboxGuests.isEmpty { return "\(engine.sandboxGuests.count) guest\(engine.sandboxGuests.count == 1 ? "" : "s") playing" }
+                return "looking for friends..."
+            }()
+            Text(label)
+                .font(.system(size: 8))
+                .foregroundColor(Color(white: 0.70).opacity(alpha))
+                .padding(.top, 16)
+                .frame(width: panelW, alignment: .center)
+        }
+    }
+
+    // Guest Mochi sprites rendered inside the sandbox
+    @ViewBuilder
+    private func guestMochis(t: Double) -> some View {
+        let sandSize = spriteSize + 2 * pad
+        ForEach(Array(engine.sandboxGuests.enumerated()), id: \.offset) { i, guest in
+            let overrides = breedOverrides(for: guest)
+            let bob = CGFloat(2.0 * sin(t * 1.8 + Double(i) * 2.1))
+            let xFrac: CGFloat = i % 2 == 0 ? 0.32 : 0.68
+            let isTransferred = engine.sandboxSession?.transferOrigins[guest.breedName ?? ""] != nil
+            VStack(spacing: 2) {
+                PixelSpriteView(frame: .idleA, scale: 3.0, overrides: overrides)
+                    .offset(y: bob)
+                if isTransferred {
+                    Button(action: {
+                        if let name = guest.breedName,
+                           let peer = engine.sandboxSession?.transferOrigins[name] {
+                            engine.sandboxSession?.returnMochi(guest, to: peer)
+                        }
+                    }) {
+                        Text("Return")
+                            .font(.system(size: 7, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Capsule().fill(Color(red: 0.55, green: 0.82, blue: 0.60)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .position(x: sandSize * xFrac, y: sandSize * 0.62)
+        }
+        .frame(width: spriteSize + 2 * pad, height: spriteSize + 2 * pad)
+    }
+
+    // Subtle pulse when idle
+    @ViewBuilder
+    private func lookingPulse(t: Double) -> some View {
+        let alpha = 0.08 + 0.06 * sin(t * 0.9)
+        Circle()
+            .fill(Color(red: 0.95, green: 0.85, blue: 0.50).opacity(alpha))
+            .frame(width: 60, height: 60)
+            .position(x: (spriteSize + 2 * pad) / 2,
+                      y: (spriteSize + 2 * pad) * 0.65)
+            .frame(width: spriteSize + 2 * pad, height: spriteSize + 2 * pad)
+    }
+
+    private func breedOverrides(for model: PetModel) -> [Character: Color] {
+        guard let name = model.breedName,
+              let breed = Breed.all.first(where: { $0.name == name }) else { return [:] }
+        return [
+            "B": Color(red: breed.body.0,  green: breed.body.1,  blue: breed.body.2),
+            "S": Color(red: breed.shade.0, green: breed.shade.1, blue: breed.shade.2),
+            "P": Color(red: breed.blush.0, green: breed.blush.1, blue: breed.blush.2),
+        ]
     }
 }
 

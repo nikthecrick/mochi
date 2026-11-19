@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var poolPanel: PetPanel?
     private var bedPanel: PetPanel?
     private var treePanel: PetPanel?
+    private var sandboxPanel: PetPanel?
     private var settingsPanel: PetPanel?
     private var shopPanel: PetPanel?
     private var activity: NSObjectProtocol?
@@ -110,9 +111,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // restore previously placed gadgets
-        if engine.model.poolOwned == true { givePool(restore: true) }
-        if engine.model.bedOwned == true  { giveBed(restore: true) }
-        if engine.model.treeOwned == true { giveTree(restore: true) }
+        if engine.model.poolOwned == true    { givePool(restore: true) }
+        if engine.model.bedOwned == true     { giveBed(restore: true) }
+        if engine.model.treeOwned == true    { giveTree(restore: true) }
+        if engine.model.sandboxOwned == true { giveSandbox(restore: true) }
 
         // Don't let App Nap pause the pet's heartbeat.
         activity = ProcessInfo.processInfo.beginActivity(
@@ -186,6 +188,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let tree = engine.treePoint() {
                 let dx = pos.x - tree.x, dy = pos.y - tree.y
                 engine.isHoveringTree = dx * dx + dy * dy < 95 * 95
+            }
+            if let sb = engine.sandboxPoint() {
+                let dx = pos.x - sb.x, dy = pos.y - sb.y
+                engine.isHoveringSandbox = dx * dx + dy * dy < 95 * 95
             }
         }
     }
@@ -282,7 +288,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onGiveTree: { [weak self] in
                 self?.shopPanel?.orderOut(nil); self?.giveTree()
             },
-            onRemoveTree: { [weak self] in self?.removeTree() }
+            onRemoveTree: { [weak self] in self?.removeTree() },
+            onGiveSandbox: { [weak self] in
+                self?.shopPanel?.orderOut(nil); self?.giveSandbox()
+            },
+            onRemoveSandbox: { [weak self] in self?.removeSandbox() }
         ))
         shopPanel = p
         placeShop(p)
@@ -528,6 +538,78 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func removeTree() {
         treePanel?.close(); treePanel = nil
         engine.model.treeOwned = false
+        engine.save()
+    }
+
+    // MARK: - Sandbox
+
+    func giveSandbox(restore: Bool = false) {
+        guard sandboxPanel == nil, engine.hasGadget else { return }
+        let size = NSSize(width: 190, height: 220)
+        let p = PetPanel.make()
+        p.setFrame(sandboxFrame(size: size), display: true)
+        p.contentView = NSHostingView(rootView: SandboxRootView(
+            engine: engine,
+            dragDelta: { [weak self] dx, dy in self?.dragSandbox(dx: dx, dy: dy) },
+            settle: { [weak self] in self?.settleSandbox() },
+            popMenu: { [weak self] in self?.popupSandboxMenu() }
+        ))
+        p.orderFrontRegardless()
+        sandboxPanel = p
+        engine.model.sandboxOwned = true
+        engine.petPos = centre(of: panel?.frame ?? .zero)
+        // Start MPC session
+        engine.sandboxSession = SandboxSession(engine: engine)
+        engine.sandboxSession?.start()
+        engine.save()
+    }
+
+    private func sandboxFrame(size: NSSize) -> NSRect {
+        if engine.model.sandboxX >= 0, engine.model.sandboxY >= 0 {
+            return NSRect(x: engine.model.sandboxX - size.width / 2,
+                          y: engine.model.sandboxY - size.height / 2,
+                          width: size.width, height: size.height)
+        }
+        let pet = panel?.frame ?? NSRect(x: 200, y: 400, width: 280, height: 240)
+        var o = NSPoint(x: pet.minX - size.width - 20, y: pet.maxY - size.height)
+        if let vis = NSScreen.main?.visibleFrame {
+            o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
+            o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
+        }
+        return NSRect(origin: o, size: size)
+    }
+
+    private func dragSandbox(dx: CGFloat, dy: CGFloat) {
+        guard let p = sandboxPanel else { return }
+        var o = p.frame.origin; o.x += dx; o.y += dy
+        p.setFrameOrigin(o)
+    }
+
+    private func settleSandbox() {
+        guard let p = sandboxPanel else { return }
+        engine.model.sandboxX = Double(p.frame.midX)
+        engine.model.sandboxY = Double(p.frame.midY)
+        engine.save()
+    }
+
+    private func popupSandboxMenu() {
+        let menu = NSMenu()
+        let remove = NSMenuItem(title: "Remove the sandbox", action: nil, keyEquivalent: "")
+        let h = PetMenu.Handler { [weak self] in self?.removeSandbox() }
+        objc_setAssociatedObject(menu, &PetMenu.assocKey, h, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        remove.target = h; remove.action = #selector(PetMenu.Handler.fire)
+        menu.addItem(remove)
+        menu.addItem(NSMenuItem(title: "Never mind", action: nil, keyEquivalent: ""))
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    func removeSandbox() {
+        engine.sandboxSession?.stop()
+        engine.sandboxSession = nil
+        engine.sandboxGuests = []
+        engine.sandboxPlayActive = false
+        sandboxPanel?.close(); sandboxPanel = nil
+        engine.model.sandboxOwned = false
         engine.save()
     }
 
