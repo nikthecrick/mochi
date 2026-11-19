@@ -36,6 +36,8 @@ enum Pal {
         "V": RGBA(r: 0.68, g: 0.42, b: 1.00),   // violet / magic
         "C": RGBA(r: 0.68, g: 0.36, b: 0.12),   // copper / rust (pool rim)
         "J": RGBA(r: 0.36, g: 0.17, b: 0.05),   // dark rust (pool inner shadow)
+        "I": RGBA(r: 0.62, g: 0.87, b: 0.74),   // fixed mint blanket (not breed-overridden)
+        "H": RGBA(r: 0.44, g: 0.71, b: 0.58),   // fixed mint shade (blanket edge)
     ]
     static let fallback = RGBA(r: 1, g: 0, b: 1)
     static func color(_ c: Character) -> Color {
@@ -64,6 +66,7 @@ enum Frame: String, CaseIterable {
     case stand2A, stand2B, wave2, cool2
     case walkLegs2A, walkLegs2B, dangle2A, dangle2B
     case swimA, swimB, pool
+    case bed, bedSleepA, bedSleepB, tree, snackFall
     // Play tricks:
     case spinA, spinB, saltoA, saltoB, zoomA, zoomB
 }
@@ -250,6 +253,79 @@ enum Sprites {
             b.p(1, 10, "K"); b.rect(2, 10, 1, 2, "S"); b.p(2, 12, "W")
             b.p(14, 10, "K"); b.rect(13, 10, 1, 2, "S"); b.p(13, 12, "W")
         }
+    }
+
+    // MARK: - Gadget sprites
+
+    private static func bed(_ b: Builder) {
+        b.rect(1, 1, 14, 2, "M")
+        b.p(3, 1, "Y"); b.p(12, 1, "Y")
+        b.p(7, 1, "W"); b.p(8, 1, "W")
+        b.rect(1, 3, 1, 10, "M"); b.rect(14, 3, 1, 10, "M")
+        b.rect(1, 13, 14, 1, "M")
+        b.p(2, 14, "M"); b.p(3, 14, "M"); b.p(12, 14, "M"); b.p(13, 14, "M")
+        b.rect(3, 3, 10, 3, "W")
+        b.rect(2, 3, 1, 3, "M"); b.rect(13, 3, 1, 3, "M")
+        b.p(3, 3, "K"); b.p(12, 3, "K"); b.p(3, 5, "K"); b.p(12, 5, "K")
+        b.p(7, 4, "P"); b.p(8, 4, "P")
+        b.rect(2, 6, 12, 1, "S")
+        b.rect(2, 7, 12, 5, "B")
+        b.p(4, 8, "W"); b.p(8, 8, "W"); b.p(11, 8, "W")
+        b.p(5, 10, "W"); b.p(9, 10, "W")
+        b.rect(2, 12, 12, 1, "S")
+        b.p(2, 15, "K"); b.rect(3, 15, 10, 1, "K"); b.p(13, 15, "K")
+    }
+
+    private static func bedSleep(_ b: Builder, phase: Int) {
+        // Cream pillow background fills top rows so desktop never shows through
+        b.rect(0, 0, 16, 6, "W")
+        ear(b, 4, "B", 0); ear(b, 9, "B", 0)
+        b.rect(4, 5, 8, 1, "K")
+        b.rect(3, 6, 1, 4, "K"); b.rect(12, 6, 1, 4, "K")
+        b.rect(4, 6, 8, 4, "B")
+        b.rect(5, 7, 2, 1, "E"); b.rect(9, 7, 2, 1, "E")
+        b.p(4, 9, "P"); b.p(11, 9, "P")
+        b.rect(7, 9, 2, 1, "K")
+        // Chin cols filled with fixed mint so bed-frame never peeks through
+        b.rect(0, 9, 3, 1, "I"); b.rect(13, 9, 3, 1, "I")
+        // Full-width blanket using fixed mint chars — not affected by breed colour overrides
+        b.rect(0, 10, 16, 1, "H")
+        b.rect(0, 11, 16, 4, "I")
+        if phase == 0 {
+            b.p(4, 12, "W"); b.p(8, 12, "W"); b.p(12, 12, "W")
+        } else {
+            b.p(5, 12, "W"); b.p(9, 12, "W"); b.p(13, 12, "W")
+        }
+        b.rect(0, 15, 16, 1, "H")
+    }
+
+    private static func snackTree(_ b: Builder) {
+        b.rect(6, 1, 4, 1, "N")
+        b.p(5, 2, "K"); b.rect(6, 2, 4, 1, "N"); b.p(10, 2, "K")
+        b.p(4, 3, "K"); b.rect(5, 3, 6, 2, "N"); b.p(11, 3, "K")
+        b.p(3, 5, "K"); b.rect(4, 5, 8, 2, "N"); b.p(12, 5, "K")
+        b.p(3, 7, "K"); b.rect(4, 7, 8, 2, "N"); b.p(12, 7, "K")
+        b.p(4, 9, "K"); b.rect(5, 9, 6, 1, "N"); b.p(11, 9, "K")
+        b.rect(6, 10, 4, 1, "K")
+        b.p(5, 3, "R"); b.p(10, 3, "R")
+        b.p(4, 6, "R"); b.p(11, 6, "R"); b.p(8, 5, "R")
+        b.p(6, 8, "R")
+        b.p(7, 2, "Y"); b.p(9, 4, "Y")
+        b.rect(7, 11, 2, 2, "M")
+        b.p(6, 11, "K"); b.p(9, 11, "K")
+        b.p(5, 13, "M"); b.rect(6, 13, 4, 1, "M"); b.p(10, 13, "M")
+        b.p(4, 13, "K"); b.p(11, 13, "K")
+        b.p(4, 15, "K"); b.rect(5, 15, 6, 1, "K"); b.p(11, 15, "K")
+    }
+
+    private static func snackFallApple(_ b: Builder) {
+        b.p(8, 3, "M"); b.p(9, 3, "N"); b.p(10, 3, "N")
+        b.rect(5, 4, 6, 1, "K")
+        b.p(4, 5, "K"); b.rect(5, 5, 6, 1, "R"); b.p(11, 5, "K")
+        b.p(4, 6, "K"); b.rect(5, 6, 6, 1, "R"); b.p(11, 6, "K")
+        b.p(4, 7, "K"); b.rect(5, 7, 6, 1, "R"); b.p(11, 7, "K")
+        b.rect(5, 8, 6, 1, "K")
+        b.p(6, 5, "W")
     }
 
     // MARK: frames
@@ -447,6 +523,16 @@ enum Sprites {
             swimmer(b, phase: 1)
         case .pool:
             pond(b)
+        case .bed:
+            bed(b)
+        case .bedSleepA:
+            bedSleep(b, phase: 0)
+        case .bedSleepB:
+            bedSleep(b, phase: 1)
+        case .tree:
+            snackTree(b)
+        case .snackFall:
+            snackFallApple(b)
         case .ghost:
             body(b, skin: "G", earL: 4, earR: 9, belly: true, blush: false, feet: "D")
             b.p(5, 7, "E"); b.p(6, 8, "E"); b.p(6, 7, "E"); b.p(5, 8, "E")   // X eyes

@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let sound  = SoundBank()
     private var panel: PetPanel?
     private var poolPanel: PetPanel?
+    private var bedPanel: PetPanel?
+    private var treePanel: PetPanel?
     private var settingsPanel: PetPanel?
     private var shopPanel: PetPanel?
     private var activity: NSObjectProtocol?
@@ -94,9 +96,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.onSwimEnd = { [weak self] in
             DispatchQueue.main.async { self?.panel?.orderFrontRegardless() }
         }
+        engine.onBedSleepStart = { [weak self] in
+            DispatchQueue.main.async { self?.panel?.orderFrontRegardless() }
+        }
+        engine.onBedSleepEnd = { [weak self] in
+            DispatchQueue.main.async { self?.panel?.orderFrontRegardless() }
+        }
+        engine.onTreeSnackStart = { [weak self] in
+            DispatchQueue.main.async { self?.panel?.orderFrontRegardless() }
+        }
+        engine.onTreeSnackEnd = { [weak self] in
+            DispatchQueue.main.async { self?.panel?.orderFrontRegardless() }
+        }
 
-        // restore a previously placed pool
+        // restore previously placed gadgets
         if engine.model.poolOwned == true { givePool(restore: true) }
+        if engine.model.bedOwned == true  { giveBed(restore: true) }
+        if engine.model.treeOwned == true { giveTree(restore: true) }
 
         // Don't let App Nap pause the pet's heartbeat.
         activity = ProcessInfo.processInfo.beginActivity(
@@ -157,11 +173,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         p.setFrameOrigin(o)
         engine.petPos = centre(of: p.frame)
-        // Keep hover state live so the view can show the pool-entry preview tint.
-        if engine.dragged, let pool = engine.poolPoint() {
-            let pos = engine.petPos!
-            let dx = pos.x - pool.x, dy = pos.y - pool.y
-            engine.isHoveringPool = dx * dx + dy * dy < 95 * 95
+        // Keep hover states live so views can show entry-preview tints.
+        if engine.dragged, let pos = engine.petPos {
+            if let pool = engine.poolPoint() {
+                let dx = pos.x - pool.x, dy = pos.y - pool.y
+                engine.isHoveringPool = dx * dx + dy * dy < 95 * 95
+            }
+            if let bed = engine.bedPoint() {
+                let dx = pos.x - bed.x, dy = pos.y - bed.y
+                engine.isHoveringBed = dx * dx + dy * dy < 95 * 95
+            }
+            if let tree = engine.treePoint() {
+                let dx = pos.x - tree.x, dy = pos.y - tree.y
+                engine.isHoveringTree = dx * dx + dy * dy < 95 * 95
+            }
         }
     }
 
@@ -247,12 +272,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             engine: engine,
             onClose: { [weak self] in self?.shopPanel?.orderOut(nil) },
             onGivePool: { [weak self] in
-                self?.shopPanel?.orderOut(nil)
-                self?.givePool()
+                self?.shopPanel?.orderOut(nil); self?.givePool()
             },
-            onRemovePool: { [weak self] in
-                self?.removePool()
-            }
+            onRemovePool: { [weak self] in self?.removePool() },
+            onGiveBed: { [weak self] in
+                self?.shopPanel?.orderOut(nil); self?.giveBed()
+            },
+            onRemoveBed: { [weak self] in self?.removeBed() },
+            onGiveTree: { [weak self] in
+                self?.shopPanel?.orderOut(nil); self?.giveTree()
+            },
+            onRemoveTree: { [weak self] in self?.removeTree() }
         ))
         shopPanel = p
         placeShop(p)
@@ -369,6 +399,136 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.model.poolOwned = false
         engine.save()
         print("Mochi: pool removed")
+    }
+
+    // MARK: - Cozy Bed
+
+    func giveBed(restore: Bool = false) {
+        guard bedPanel == nil, engine.hasGadget else { return }
+        let size = NSSize(width: 170, height: 170)
+        let p = PetPanel.make()
+        p.setFrame(bedFrame(size: size), display: true)
+        p.contentView = NSHostingView(rootView: BedRootView(
+            engine: engine,
+            dragDelta: { [weak self] dx, dy in self?.dragBed(dx: dx, dy: dy) },
+            settle: { [weak self] in self?.settleBed() },
+            popMenu: { [weak self] in self?.popupBedMenu() }
+        ))
+        p.orderFrontRegardless()
+        bedPanel = p
+        engine.model.bedOwned = true
+        engine.petPos = centre(of: panel?.frame ?? .zero)
+        engine.save()
+    }
+
+    private func bedFrame(size: NSSize) -> NSRect {
+        if engine.model.bedX >= 0, engine.model.bedY >= 0 {
+            return NSRect(x: engine.model.bedX - size.width / 2,
+                          y: engine.model.bedY - size.height / 2,
+                          width: size.width, height: size.height)
+        }
+        let pet = panel?.frame ?? NSRect(x: 200, y: 400, width: 280, height: 240)
+        var o = NSPoint(x: pet.minX - size.width - 20, y: pet.minY + 40)
+        if let vis = NSScreen.main?.visibleFrame {
+            o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
+            o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
+        }
+        return NSRect(origin: o, size: size)
+    }
+
+    private func dragBed(dx: CGFloat, dy: CGFloat) {
+        guard let p = bedPanel else { return }
+        var o = p.frame.origin; o.x += dx; o.y += dy
+        p.setFrameOrigin(o)
+    }
+
+    private func settleBed() {
+        guard let p = bedPanel else { return }
+        engine.model.bedX = Double(p.frame.midX)
+        engine.model.bedY = Double(p.frame.midY)
+        engine.save()
+    }
+
+    private func popupBedMenu() {
+        let menu = NSMenu()
+        let remove = NSMenuItem(title: "Remove the bed", action: nil, keyEquivalent: "")
+        let h = PetMenu.Handler { [weak self] in self?.removeBed() }
+        objc_setAssociatedObject(menu, &PetMenu.assocKey, h, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        remove.target = h; remove.action = #selector(PetMenu.Handler.fire)
+        menu.addItem(remove)
+        menu.addItem(NSMenuItem(title: "Never mind", action: nil, keyEquivalent: ""))
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    func removeBed() {
+        bedPanel?.close(); bedPanel = nil
+        engine.model.bedOwned = false
+        engine.save()
+    }
+
+    // MARK: - Snack Tree
+
+    func giveTree(restore: Bool = false) {
+        guard treePanel == nil, engine.hasGadget else { return }
+        let size = NSSize(width: 170, height: 170)
+        let p = PetPanel.make()
+        p.setFrame(treeFrame(size: size), display: true)
+        p.contentView = NSHostingView(rootView: TreeRootView(
+            engine: engine,
+            dragDelta: { [weak self] dx, dy in self?.dragTree(dx: dx, dy: dy) },
+            settle: { [weak self] in self?.settleTree() },
+            popMenu: { [weak self] in self?.popupTreeMenu() }
+        ))
+        p.orderFrontRegardless()
+        treePanel = p
+        engine.model.treeOwned = true
+        engine.petPos = centre(of: panel?.frame ?? .zero)
+        engine.save()
+    }
+
+    private func treeFrame(size: NSSize) -> NSRect {
+        if engine.model.treeX >= 0, engine.model.treeY >= 0 {
+            return NSRect(x: engine.model.treeX - size.width / 2,
+                          y: engine.model.treeY - size.height / 2,
+                          width: size.width, height: size.height)
+        }
+        let pet = panel?.frame ?? NSRect(x: 200, y: 400, width: 280, height: 240)
+        var o = NSPoint(x: pet.maxX + 20, y: pet.minY + 20)
+        if let vis = NSScreen.main?.visibleFrame {
+            o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
+            o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
+        }
+        return NSRect(origin: o, size: size)
+    }
+
+    private func dragTree(dx: CGFloat, dy: CGFloat) {
+        guard let p = treePanel else { return }
+        var o = p.frame.origin; o.x += dx; o.y += dy
+        p.setFrameOrigin(o)
+    }
+
+    private func settleTree() {
+        guard let p = treePanel else { return }
+        engine.model.treeX = Double(p.frame.midX)
+        engine.model.treeY = Double(p.frame.midY)
+        engine.save()
+    }
+
+    private func popupTreeMenu() {
+        let menu = NSMenu()
+        let remove = NSMenuItem(title: "Remove the tree", action: nil, keyEquivalent: "")
+        let h = PetMenu.Handler { [weak self] in self?.removeTree() }
+        objc_setAssociatedObject(menu, &PetMenu.assocKey, h, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        remove.target = h; remove.action = #selector(PetMenu.Handler.fire)
+        menu.addItem(remove)
+        menu.addItem(NSMenuItem(title: "Never mind", action: nil, keyEquivalent: ""))
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    func removeTree() {
+        treePanel?.close(); treePanel = nil
+        engine.model.treeOwned = false
+        engine.save()
     }
 
     /// Clean the toilet = empty the Trash (the pet refills it as it eats).

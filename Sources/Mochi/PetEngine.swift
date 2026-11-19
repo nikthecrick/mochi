@@ -40,6 +40,7 @@ struct PetModel: Codable {
     var borrowedFrom: String?     // prepared: set when a borrowed pet is imported
     var deepSleep: Bool = false   // true while in screen/system sleep hibernation
     var brainInstalled: Bool = false
+    var shopOpened: Bool?            // true once the shop has been opened at least once
     var filesEaten: Int = 0
     var bytesEaten: Int64 = 0
     var legsGrown: Bool?          // optional: old saves decode without it
@@ -51,6 +52,12 @@ struct PetModel: Codable {
     var poolOwned: Bool?          // stage 3 gadget: the pool
     var poolX: Double = -1
     var poolY: Double = -1
+    var bedOwned: Bool?           // stage 3 gadget: the cozy bed
+    var bedX: Double = -1
+    var bedY: Double = -1
+    var treeOwned: Bool?          // stage 3 gadget: the snack tree
+    var treeX: Double = -1
+    var treeY: Double = -1
     var chub: Double?             // 0...100: eating too much / not playing enough
     var lastEaten: [String]?      // file names in the belly, waiting to be pooped
     var lastMealAt: Date?
@@ -188,6 +195,20 @@ final class PetEngine: ObservableObject {
     var onEatFile: ((URL) -> Void)?      // AppDelegate trashes the eaten file
     var onSwimStart: (() -> Void)?       // pool panel → orderFrontRegardless
     var onSwimEnd: (() -> Void)?         // pet panel → orderFrontRegardless
+    // Bed sleep
+    @Published var bedSleepUntil: Date?
+    @Published var isHoveringBed = false
+    var bedStartedAt: Date? = nil
+    var bedSleepClickCount = 0
+    var walkToBed = false
+    var onBedSleepStart: (() -> Void)?
+    var onBedSleepEnd: (() -> Void)?
+    // Snack tree
+    @Published var treeSnackUntil: Date?
+    @Published var isHoveringTree = false
+    var walkToTree = false
+    var onTreeSnackStart: (() -> Void)?
+    var onTreeSnackEnd: (() -> Void)?
     weak var sound: SoundBank?
 
     private var timer: Timer?
@@ -222,6 +243,8 @@ final class PetEngine: ObservableObject {
     var jumpActive: Bool { jumpUntil.map { now < $0 } ?? false }
     var swimActive: Bool { swimUntil.map { now < $0 } ?? false }
     var poolSplashActive: Bool { poolSplashUntil.map { now < $0 } ?? false }
+    var bedSleepActive: Bool { bedSleepUntil.map { now < $0 } ?? false }
+    var treeSnackActive: Bool { treeSnackUntil.map { now < $0 } ?? false }
     var growBounceActive: Bool { growBounceUntil.map { now < $0 } ?? false }
     var playActive: Bool { playUntil.map { now < $0 } ?? false }
     var inflateActive: Bool { inflateUntil.map { now < $0 } ?? false }
@@ -277,6 +300,8 @@ final class PetEngine: ObservableObject {
         advance(to: now)
         advancePoopPhase()
         advanceSwim()
+        advanceBedSleep()
+        advanceTreeSnack()
         advanceCocoon()
         advanceMagicAura()
         advancePoolSplash()
@@ -392,15 +417,27 @@ final class PetEngine: ObservableObject {
     func maybeWalk(probability: Double? = nil) {
         let p = probability ?? PetRates.walkChanceSetting()
         guard hasLegs, !model.dead, !model.asleep, !dragged, !isWalking,
-              !poopActive, !jumpActive, !swimActive, Double.random(in: 0..<1) < p else { return }
+              !poopActive, !jumpActive, !swimActive, !bedSleepActive, !treeSnackActive,
+              Double.random(in: 0..<1) < p else { return }
+        walkSpeed = Double.random(in: PetRates.walkSpeedMin...PetRates.walkSpeedMax)
         // gadget pets with a pool sometimes stroll over for a dip
-        if (model.poolOwned == true), let pos = petPos,
+        if model.poolOwned == true, let pos = petPos,
            let pool = poolPoint(), Double.random(in: 0..<1) < 0.25 {
             let dist = hypot(pool.x - pos.x, pool.y - pos.y)
-            walkToPool = true
+            walkToPool = true; walkToBed = false; walkToTree = false
+            walkUntil = now.addingTimeInterval(max(10, min(90, dist / walkSpeed + 4)))
+        } else if model.bedOwned == true, let pos = petPos,
+           let bed = bedPoint(), Double.random(in: 0..<1) < 0.20 {
+            let dist = hypot(bed.x - pos.x, bed.y - pos.y)
+            walkToBed = true; walkToPool = false; walkToTree = false
+            walkUntil = now.addingTimeInterval(max(10, min(90, dist / walkSpeed + 4)))
+        } else if model.treeOwned == true, model.hunger < 55, let pos = petPos,
+           let tree = treePoint(), Double.random(in: 0..<1) < 0.30 {
+            let dist = hypot(tree.x - pos.x, tree.y - pos.y)
+            walkToTree = true; walkToPool = false; walkToBed = false
             walkUntil = now.addingTimeInterval(max(10, min(90, dist / walkSpeed + 4)))
         } else {
-            walkToPool = false
+            walkToPool = false; walkToBed = false; walkToTree = false
             walkUntil = now.addingTimeInterval(Double.random(in: PetRates.walkSecondsMin...PetRates.walkSecondsMax))
         }
         if Bool.random() {          // horizontal or vertical stroll
@@ -410,7 +447,6 @@ final class PetEngine: ObservableObject {
             walkDirX = 0
             walkDirY = Bool.random() ? 1 : -1
         }
-        walkSpeed = Double.random(in: PetRates.walkSpeedMin...PetRates.walkSpeedMax)
         sniffUntil = nil
     }
 
@@ -441,14 +477,31 @@ final class PetEngine: ObservableObject {
             return .idle
         }
         guard let until = walkUntil, now < until else {
-            if walkUntil != nil { walkUntil = nil; return .ended }
+            if walkUntil != nil {
+                walkUntil = nil; walkToPool = false; walkToBed = false; walkToTree = false
+                return .ended
+            }
             return .idle
         }
-        if swimActive { return .idle }   // busy swimming
+        if swimActive || bedSleepActive || treeSnackActive { return .idle }
         if walkToPool, let pos = petPos, let pool = poolPoint() {
             let dxv = pool.x - pos.x, dyv = pool.y - pos.y
             let dist = hypot(dxv, dyv)
-            if dist < 60 { startSwim(); return .ended }   // arrived: dip!
+            if dist < 60 { startSwim(); return .ended }
+            let step = min(walkSpeed * dt, dist)
+            return .moving(dx: dxv / dist * step, dy: dyv / dist * step)
+        }
+        if walkToBed, let pos = petPos, let bed = bedPoint() {
+            let dxv = bed.x - pos.x, dyv = bed.y - pos.y
+            let dist = hypot(dxv, dyv)
+            if dist < 60 { startBedSleep(); return .ended }
+            let step = min(walkSpeed * dt, dist)
+            return .moving(dx: dxv / dist * step, dy: dyv / dist * step)
+        }
+        if walkToTree, let pos = petPos, let tree = treePoint() {
+            let dxv = tree.x - pos.x, dyv = tree.y - pos.y
+            let dist = hypot(dxv, dyv)
+            if dist < 60 { startTreeSnack(); return .ended }
             let step = min(walkSpeed * dt, dist)
             return .moving(dx: dxv / dist * step, dy: dyv / dist * step)
         }
@@ -506,6 +559,82 @@ final class PetEngine: ObservableObject {
         // walk away from the pool a little
         walkDirX = Bool.random() ? 1 : -1
         walkDirY = 0
+        walkUntil = now.addingTimeInterval(3)
+        save()
+    }
+
+    // MARK: - Bed sleep
+
+    func bedPoint() -> (x: Double, y: Double)? {
+        guard model.bedOwned == true, model.bedX >= 0, model.bedY >= 0 else { return nil }
+        return (model.bedX, model.bedY)
+    }
+
+    func startBedSleep() {
+        walkUntil = nil
+        walkToBed = false; walkToPool = false; walkToTree = false
+        bedSleepUntil = now.addingTimeInterval(15 * 60)  // 15 min max; tap to wake early
+        bedStartedAt = now
+        bedSleepClickCount = 0
+        model.happiness = min(100, model.happiness + 5)
+        spawn(.sparkle, 2)
+        sound?.play(.sleep)
+        onBedSleepStart?()
+        save()
+    }
+
+    /// Tap sleeping Mochi — spawns a heart each time; wakes after 5 taps.
+    func tapDuringSleep() {
+        guard bedSleepActive else { return }
+        spawn(.heart, 1)
+        sound?.play(.pat)
+        bedSleepClickCount += 1
+        if bedSleepClickCount >= 5 {
+            bedSleepUntil = Date(timeIntervalSinceNow: -1)  // expire on next tick
+        }
+    }
+
+    private func advanceBedSleep() {
+        guard let until = bedSleepUntil, now >= until else { return }
+        bedSleepUntil = nil
+        bedStartedAt = nil
+        bedSleepClickCount = 0
+        model.energy = min(100, model.energy + 20)
+        model.happiness = min(100, model.happiness + 8)
+        spawn(.heart, 2)
+        sound?.play(.wake)
+        onBedSleepEnd?()
+        walkDirX = Bool.random() ? 1 : -1; walkDirY = 0
+        walkUntil = now.addingTimeInterval(3)
+        save()
+    }
+
+    // MARK: - Snack tree
+
+    func treePoint() -> (x: Double, y: Double)? {
+        guard model.treeOwned == true, model.treeX >= 0, model.treeY >= 0 else { return nil }
+        return (model.treeX, model.treeY)
+    }
+
+    func startTreeSnack() {
+        walkUntil = nil
+        walkToTree = false; walkToPool = false; walkToBed = false
+        treeSnackUntil = now.addingTimeInterval(Double.random(in: 8...14))
+        model.hunger = min(100, model.hunger + 20)
+        model.happiness = min(100, model.happiness + 5)
+        spawn(.sparkle, 2)
+        sound?.play(.sleep)
+        onTreeSnackStart?()
+        save()
+    }
+
+    private func advanceTreeSnack() {
+        guard let until = treeSnackUntil, now >= until else { return }
+        treeSnackUntil = nil
+        spawn(.heart, 2)
+        sound?.play(.wake)
+        onTreeSnackEnd?()
+        walkDirX = Bool.random() ? 1 : -1; walkDirY = 0
         walkUntil = now.addingTimeInterval(3)
         save()
     }
@@ -1028,6 +1157,12 @@ final class PetEngine: ObservableObject {
     // MARK: - Persistence
 
     func save() { PetStore.save(model) }
+
+    func markShopVisited() {
+        guard model.shopOpened != true else { return }
+        model.shopOpened = true
+        save()
+    }
 
     private func autoSave() {
         if now.timeIntervalSince(lastAutoSave) > 30 { save(); lastAutoSave = now }

@@ -297,6 +297,35 @@ struct PetRootView: View {
             .opacity(engine.isHoveringPool && !engine.swimActive ? 1 : 0)
             .animation(.easeInOut(duration: 0.25), value: engine.isHoveringPool)
             .allowsHitTesting(false)
+            // Bed hover tint — warm golden gradient on bottom ~32% while dragging over bed.
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 1.0, green: 0.80, blue: 0.40).opacity(0), location: 0),
+                    .init(color: Color(red: 1.0, green: 0.70, blue: 0.25).opacity(0.20), location: 0.5),
+                    .init(color: Color(red: 0.92, green: 0.55, blue: 0.10).opacity(0.38), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(width: 16.0 * scale, height: 16.0 * scale * 0.35)
+            .frame(width: 16.0 * scale, height: 16.0 * scale, alignment: .bottom)
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides))
+            .opacity(engine.isHoveringBed && !engine.bedSleepActive ? 1 : 0)
+            .animation(.easeInOut(duration: 0.25), value: engine.isHoveringBed)
+            .allowsHitTesting(false)
+            // Warm cozy sleep glow — amber only on the head area, fades before the blanket.
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 0.95, green: 0.75, blue: 0.30).opacity(0.28), location: 0.0),
+                    .init(color: Color(red: 0.95, green: 0.70, blue: 0.25).opacity(0.18), location: 0.38),
+                    .init(color: Color(red: 0.95, green: 0.70, blue: 0.25).opacity(0),    location: 0.58),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(width: 16.0 * scale, height: 16.0 * scale)
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides))
+            .opacity(engine.bedSleepActive ? 1 : 0)
+            .animation(.easeInOut(duration: 0.5), value: engine.bedSleepActive)
+            .allowsHitTesting(false)
             // Swim water overlay — sharp waterline at ~56% height; opaque deep-blue at bottom.
             // New breaststroke sprite has full body pixels so the gradient masks correctly.
             LinearGradient(
@@ -316,6 +345,8 @@ struct PetRootView: View {
             submergeFlash(frame: frame, scale: scale, t: t)
             // Deep-dive overlay: full blue fade-in/out during the dive window.
             diveOverlay(frame: frame, scale: scale, t: t)
+            // Big Zzz overlay while sleeping in bed.
+            bedZzzOverlay(t: t)
         }
         .scaleEffect(x: stretchX(t: t), y: stretchY(t: t))
         .offset(x: wobbleX(mood: mood, t: t),
@@ -325,17 +356,23 @@ struct PetRootView: View {
                 onDrag: { dx, dy in
                     engine.dragged = true
                     engine.walkUntil = nil
+                    engine.walkToBed = false; engine.walkToTree = false
                     if engine.swimActive { engine.swimUntil = Date() }  // drag off pool fades water out
-                    dragDelta(dx, dy)  // updates petPos → AppDelegate recomputes isHoveringPool
+                    dragDelta(dx, dy)  // updates petPos → AppDelegate recomputes isHoveringPool/Bed/Tree
                 },
                 onRelease: { moved in
                     let droppedOnPool = engine.isHoveringPool
+                    let droppedOnBed = engine.isHoveringBed
                     engine.dragged = false
                     engine.isHoveringPool = false
+                    engine.isHoveringBed = false
+                    engine.isHoveringTree = false
                     if moved {
                         settle()
-                        if droppedOnPool { engine.startSwim() }  // immediate splash, no walk needed
-                    } else if mood == .egg { eggDetail.toggle() }
+                        if droppedOnPool { engine.startSwim() }
+                        else if droppedOnBed { engine.startBedSleep() }
+                    } else if engine.bedSleepActive { engine.tapDuringSleep() }
+                    else if mood == .egg { eggDetail.toggle() }
                     else { engine.pat(); engine.easterEggClick() }
                 },
                 onRightClick: { popMenu() },
@@ -370,7 +407,7 @@ struct PetRootView: View {
                 EarClickArea(
                     onDrag: { dx, dy in dragDelta(dx, dy) },
                     onRelease: { moved in
-                        if moved { settle() } else { onShop() }
+                        if moved { settle() } else { engine.markShopVisited(); onShop() }
                     },
                     onRightClick: { popMenu() }
                 )
@@ -428,8 +465,8 @@ struct PetRootView: View {
                 .mask(LeftEarGlowMask())
                 .allowsHitTesting(false)
         }
-        // Right ear: purple shop hint until brain is installed
-        if engine.hasLegs && !engine.model.brainInstalled {
+        // Right ear: purple shop hint until brain is installed or shop opened once
+        if engine.hasLegs && !engine.model.brainInstalled && engine.model.shopOpened != true {
             let pulse = 0.18 + 0.14 * (0.5 + 0.5 * sin(t * 4.5))
             PixelSpriteView(frame: frame, scale: scale, tint: .purple)
                 .blur(radius: 2.5)
@@ -663,6 +700,10 @@ struct PetRootView: View {
         if engine.jumpActive && mood != .dead && mood != .egg && mood != .hatch {
             return fast ? .dangleA : .dangleB
         }
+        // Sleeping in the cozy bed: Mochi face peeking above blanket
+        if engine.bedSleepActive && mood != .dead && mood != .egg && mood != .hatch {
+            return p == 0 ? .bedSleepA : .bedSleepB
+        }
         // Swimming in the pool: head above water, ripples
         if engine.swimActive && mood != .dead && mood != .egg && mood != .hatch {
             return fast ? .swimA : .swimB
@@ -783,6 +824,7 @@ struct PetRootView: View {
     }
 
     private func bobY(mood: Mood, t: Double) -> CGFloat {
+        if engine.bedSleepActive { return 0 }
         if engine.swimActive {
             // Suppress bob during entry and during dive (diveY handles offset then).
             if engine.swimDiving,
@@ -876,6 +918,26 @@ struct PetRootView: View {
                     .mask(PixelSpriteView(frame: frame, scale: scale,
                                          overrides: engine.breedOverrides))
                     .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// Big floating Zzz while Mochi sleeps in the bed.
+    @ViewBuilder
+    private func bedZzzOverlay(t: Double) -> some View {
+        if engine.bedSleepActive {
+            let zz: [(String, Double, CGFloat, CGFloat)] = [
+                ("Z", 0.0,  10, 0),
+                ("Z", 1.0,  14, -16),
+                ("Z", 2.0,  18, -34),
+            ]
+            ForEach(Array(zz.enumerated()), id: \.offset) { _, z in
+                let bob = CGFloat(sin(t * 1.1 + z.1) * 3.5)
+                Text(z.0)
+                    .font(PixelFont.font(z.2))
+                    .foregroundColor(Color(red: 0.68, green: 0.50, blue: 1.0))
+                    .shadow(color: Color(red: 0.45, green: 0.25, blue: 0.90).opacity(0.70), radius: 4, y: 2)
+                    .offset(x: 28 + z.3 * 0.5, y: -38 + z.3 + bob)
             }
         }
     }
@@ -1231,6 +1293,109 @@ struct PoolRootView: View {
                 .frame(width: 12 + 44 * p2, height: 12 + 44 * p2)
         }
         .position(x: cx, y: cy)
+        .frame(width: panelSize, height: panelSize)
+    }
+}
+
+// MARK: - Cozy Bed (gadget stage: retro Mochi pixel bed, draggable panel)
+
+struct BedRootView: View {
+    @ObservedObject var engine: PetEngine
+    var dragDelta: (CGFloat, CGFloat) -> Void
+    var settle: () -> Void
+    var popMenu: () -> Void
+
+    private let spriteScale: CGFloat = 10
+    private let pad: CGFloat = 5
+    private var panelSize: CGFloat { 16 * spriteScale + 2 * pad }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.1)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
+            ZStack {
+                PixelSpriteView(frame: .bed, scale: spriteScale)
+                    .padding(pad)
+                if engine.bedSleepActive { cozyCandleFlicker(t: t) }
+            }
+            .frame(width: panelSize, height: panelSize)
+            .contentShape(Rectangle())
+            .shadow(color: Color(red: 0.55, green: 0.30, blue: 0.10).opacity(0.45), radius: 12, y: 6)
+            .overlay(
+                DragArea(
+                    onDrag: { dx, dy in dragDelta(dx, dy) },
+                    onRelease: { moved in if moved { settle() } },
+                    onRightClick: { popMenu() }
+                )
+            )
+        }
+    }
+
+    // Warm amber candlelight shimmer while Mochi sleeps
+    @ViewBuilder
+    private func cozyCandleFlicker(t: Double) -> some View {
+        let glints: [(x: CGFloat, y: CGFloat, freq: Double, phase: Double)] = [
+            (45, 70, 1.8, 0.0), (85, 62, 2.3, 0.9), (115, 75, 1.5, 2.1),
+            (60, 100, 2.0, 1.4), (100, 108, 1.7, 3.0),
+        ]
+        ForEach(Array(glints.enumerated()), id: \.offset) { _, g in
+            Ellipse()
+                .fill(Color(red: 1.0, green: 0.70, blue: 0.30)
+                    .opacity(0.06 + 0.07 * sin(t * g.freq + g.phase)))
+                .frame(width: 20, height: 8)
+                .position(x: g.x + pad, y: g.y + pad)
+        }
+        .frame(width: panelSize, height: panelSize)
+    }
+}
+
+// MARK: - Snack Tree (gadget stage: retro Mochi pixel tree, draggable panel)
+
+struct TreeRootView: View {
+    @ObservedObject var engine: PetEngine
+    var dragDelta: (CGFloat, CGFloat) -> Void
+    var settle: () -> Void
+    var popMenu: () -> Void
+
+    private let spriteScale: CGFloat = 10
+    private let pad: CGFloat = 5
+    private var panelSize: CGFloat { 16 * spriteScale + 2 * pad }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.08)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
+            ZStack {
+                PixelSpriteView(frame: .tree, scale: spriteScale)
+                    .padding(pad)
+                if engine.treeSnackActive { snackRain(t: t) }
+            }
+            .frame(width: panelSize, height: panelSize)
+            .contentShape(Rectangle())
+            .shadow(color: Color(red: 0.15, green: 0.45, blue: 0.15).opacity(0.40), radius: 12, y: 6)
+            .overlay(
+                DragArea(
+                    onDrag: { dx, dy in dragDelta(dx, dy) },
+                    onRelease: { moved in if moved { settle() } },
+                    onRightClick: { popMenu() }
+                )
+            )
+        }
+    }
+
+    // Apples falling from the tree while Mochi snacks
+    @ViewBuilder
+    private func snackRain(t: Double) -> some View {
+        let drops: [(startX: CGFloat, delay: Double, speed: Double)] = [
+            (55,  0.0, 1.8), (95,  0.6, 2.2), (120, 1.1, 1.5),
+            (70,  1.8, 2.0), (108, 2.4, 1.7),
+        ]
+        ForEach(Array(drops.enumerated()), id: \.offset) { _, d in
+            let cycle = (t + d.delay).truncatingRemainder(dividingBy: d.speed) / d.speed
+            let yPos = pad + 20 + cycle * (panelSize - 40)
+            let opacity = cycle < 0.1 ? cycle / 0.1 : (cycle > 0.85 ? (1 - cycle) / 0.15 : 1.0)
+            PixelSpriteView(frame: .snackFall, scale: 2.0)
+                .position(x: d.startX + pad, y: yPos)
+                .opacity(opacity * 0.90)
+        }
         .frame(width: panelSize, height: panelSize)
     }
 }

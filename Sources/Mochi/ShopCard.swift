@@ -8,6 +8,10 @@ struct ShopCard: View {
     var onClose: () -> Void
     var onGivePool: () -> Void = {}
     var onRemovePool: () -> Void = {}
+    var onGiveBed: () -> Void = {}
+    var onRemoveBed: () -> Void = {}
+    var onGiveTree: () -> Void = {}
+    var onRemoveTree: () -> Void = {}
 
     @State private var tab: ShopTab = .shop
 
@@ -65,10 +69,8 @@ struct ShopCard: View {
     private var gadgetsContent: some View {
         section("GADGETS") {
             PoolItem(engine: engine, onGive: onGivePool, onRemove: onRemovePool)
-        }
-        section("COMING SOON") {
-            lockedItem(icon: "moon.stars", name: "COZY BED",   desc: "A proper bed for deeper sleep")
-            lockedItem(icon: "leaf",       name: "SNACK TREE", desc: "Auto-feed snacks at a schedule")
+            BedItem(engine: engine, onGive: onGiveBed, onRemove: onRemoveBed)
+            TreeItem(engine: engine, onGive: onGiveTree, onRemove: onRemoveTree)
         }
     }
 
@@ -320,5 +322,175 @@ private struct PoolItem: View {
             PixelSpriteView(frame: .pool, scale: 2.0)
         }
         .shadow(color: Color.cyan.opacity(0.4), radius: 5)
+    }
+}
+
+// MARK: – Cozy Bed item card
+
+private struct BedItem: View {
+    @ObservedObject var engine: PetEngine
+    var onGive: () -> Void
+    var onRemove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                bedIcon
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("COZY BED")
+                            .font(PixelFont.font(8))
+                            .foregroundColor(.white)
+                        if engine.model.bedOwned == true {
+                            Text("PLACED")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundColor(Color(red: 1.0, green: 0.80, blue: 0.55))
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Capsule().fill(Color.orange.opacity(0.25)))
+                        }
+                    }
+                    Text("Drop \(engine.model.name) on it for a deep cozy nap.")
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+            }
+
+            if engine.hasGadget {
+                Text("Drag it anywhere on your desktop. Drop \(engine.model.name) on the bed for a deep nap with big Zzz.")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    Spacer()
+                    if engine.model.bedOwned == true {
+                        Button { onRemove() } label: {
+                            Text("REMOVE")
+                                .font(PixelFont.font(7))
+                                .foregroundColor(.white.opacity(0.75))
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(Capsule().fill(Color.white.opacity(0.1)))
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button { onGive() } label: {
+                            Text("PLACE BED")
+                                .font(PixelFont.font(7))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(Capsule().fill(Color(red: 1.0, green: 0.80, blue: 0.55)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            } else {
+                Text("Keep feeding \(engine.model.name) to unlock the gadget stage.")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.42))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.orange.opacity(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(
+            engine.hasGadget ? Color.orange.opacity(0.28) : Color.white.opacity(0.08)))
+    }
+
+    private var bedIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.84, green: 0.62, blue: 0.42),
+                             Color(red: 0.68, green: 0.44, blue: 0.24)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 38, height: 38)
+            PixelSpriteView(frame: .bed, scale: 2.0)
+        }
+        .shadow(color: Color.orange.opacity(0.4), radius: 5)
+    }
+}
+
+// MARK: – Snack Tree item card
+
+private struct TreeItem: View {
+    @ObservedObject var engine: PetEngine
+    var onGive: () -> Void
+    var onRemove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                treeIcon
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("SNACK TREE")
+                            .font(PixelFont.font(8))
+                            .foregroundColor(.white)
+                        if engine.model.treeOwned == true {
+                            Text("PLACED")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundColor(Color(red: 0.60, green: 1.0, blue: 0.55))
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Capsule().fill(Color.green.opacity(0.25)))
+                        }
+                    }
+                    Text("\(engine.model.name) walks over when hungry for snacks.")
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+            }
+
+            if engine.hasGadget {
+                Text("When \(engine.model.name) is hungry they'll stroll over — snacks fall from the branches right into their mouth.")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    Spacer()
+                    if engine.model.treeOwned == true {
+                        Button { onRemove() } label: {
+                            Text("REMOVE")
+                                .font(PixelFont.font(7))
+                                .foregroundColor(.white.opacity(0.75))
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(Capsule().fill(Color.white.opacity(0.1)))
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button { onGive() } label: {
+                            Text("PLACE TREE")
+                                .font(PixelFont.font(7))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .background(Capsule().fill(Color(red: 0.60, green: 0.90, blue: 0.55)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            } else {
+                Text("Keep feeding \(engine.model.name) to unlock the gadget stage.")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.42))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(
+            engine.hasGadget ? Color.green.opacity(0.28) : Color.white.opacity(0.08)))
+    }
+
+    private var treeIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(LinearGradient(
+                    colors: [Color(red: 0.30, green: 0.68, blue: 0.28),
+                             Color(red: 0.18, green: 0.52, blue: 0.18)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 38, height: 38)
+            PixelSpriteView(frame: .tree, scale: 2.0)
+        }
+        .shadow(color: Color.green.opacity(0.4), radius: 5)
     }
 }
