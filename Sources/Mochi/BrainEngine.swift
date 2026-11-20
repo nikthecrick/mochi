@@ -29,6 +29,7 @@ final class BrainEngine: ObservableObject {
     private var lastThought: Date = .distantPast
     private var isThinking = false
     private var isFirstThought = true   // cleared after the first successful think
+    private var recentTools: [String] = []   // last 5 tool names used, for variety nudge
 
     static let defaultEndpoint = "https://openrouter.ai/api/v1"
     static let defaultModel    = "anthropic/claude-haiku-4-5"
@@ -114,6 +115,8 @@ final class BrainEngine: ObservableObject {
         who you are (personality, quirks, something that feels true). \
         Then greet the user with a short warm message via say (max 60 chars).
         """ : "\nOnly say something when it's genuinely interesting or relevant — silence is fine."
+        let recentNote = recentTools.isEmpty ? "" :
+            "\nRecent actions (DO NOT repeat these): \(recentTools.joined(separator: ", "))"
         let systemPrompt = """
         You are the mind of \(m.name), a Mochi desktop pet on a Mac. \
         You run autonomously every few minutes to observe, think, and act.
@@ -128,8 +131,8 @@ final class BrainEngine: ObservableObject {
         Files eaten: \(m.filesEaten)  Time: \(fmt.string(from: Date()))
 
         Sandbox: ~/.mochi/brain/sandbox/ — Python 3 available. Write .py scripts + run them. \
-        Write .html+JS pages and call show_gadget to open them as a floating window — \
-        build mini-games, toys, clocks, art. Be creative and surprise the user.
+        Write .html+JS pages and call show_gadget to open them as floating gadget window — \
+        mini-games, clocks, art, toys. PRIORITISE building gadgets over simple effects.\(recentNote)
         Bubbles: max 70 chars. Plain text reply also shows as a bubble. Save insights with remember().
         IMPORTANT: Act autonomously then stop. Never narrate what you did or ask what to do next.\(firstRunNote)
         """
@@ -180,6 +183,8 @@ final class BrainEngine: ObservableObject {
 
                 let result = await executeTool(name: name, args: args, pet: pet)
                 results.append(["role": "tool", "tool_call_id": tcID, "content": result])
+                recentTools.append(name)
+                if recentTools.count > 5 { recentTools.removeFirst() }
             }
             pet.brainActing = false
             messages.append(contentsOf: results)

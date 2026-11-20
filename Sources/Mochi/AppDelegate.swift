@@ -331,8 +331,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func placeGadget(_ p: PetPanel) {
         guard let pet = panel else { return }
-        let size = NSSize(width: 340, height: 380)
-        var o = NSPoint(x: pet.frame.maxX + 14, y: pet.frame.midY - size.height / 2)
+        let size = NSSize(width: 300, height: 260)
+        var o = NSPoint(x: pet.frame.midX - size.width / 2,
+                        y: pet.frame.maxY + 10)
         if let vis = NSScreen.main?.visibleFrame {
             o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
             o.y = min(max(vis.minY, o.y), vis.maxY - size.height)

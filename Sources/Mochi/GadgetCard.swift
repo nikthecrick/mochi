@@ -7,13 +7,13 @@ struct GadgetCard: View {
     let url: URL
     var onClose: () -> Void
 
-    private let w: CGFloat = 320
+    private let w: CGFloat = 300
 
     var body: some View {
         VStack(spacing: 0) {
             header
             GadgetWebView(url: url)
-                .frame(width: w, height: 300)
+                .frame(width: w, height: 210)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 10)
                 .padding(.bottom, 12)
