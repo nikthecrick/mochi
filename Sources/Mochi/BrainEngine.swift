@@ -21,6 +21,7 @@ enum ConnectionStatus: Equatable {
 final class BrainEngine: ObservableObject {
     @Published var connectionStatus: ConnectionStatus = .unknown
     weak var pet: PetEngine?
+    var onShowGadget: ((URL) -> Void)?
 
     private let sandboxURL: URL
     private var memory: MemoryManager!
@@ -92,7 +93,11 @@ final class BrainEngine: ObservableObject {
         }
         print("Mochi brain: \(pet.model.name) is thinking…")
         do { try await runAgentLoop(pet: pet, firstRun: firstRun) }
-        catch { print("Mochi brain: error — \(error.localizedDescription)") }
+        catch {
+            let msg = error.localizedDescription
+            print("Mochi brain: error — \(msg)")
+            pet.speak("⚠️ \(String(msg.prefix(120)))")
+        }
     }
 
     // MARK: - Agent loop (max 5 tool-call rounds)
@@ -122,18 +127,15 @@ final class BrainEngine: ObservableObject {
         Asleep: \(m.asleep)  Age: \(ageString(pet.age))  Stage: \(pet.evolution)/3
         Files eaten: \(m.filesEaten)  Time: \(fmt.string(from: Date()))
 
-        You have a private sandbox at ~/.mochi/brain/sandbox/ for notes and scripts.
-        Speech bubbles appear on screen — keep them under 70 chars.
-        You have MAGIC powers: spawn_effect, trigger_animation, and magic_boost can produce \
-        visible effects on screen. Use them creatively — surprise the user with a star burst, \
-        a rainbow aura, or a secret stat boost. Don't just talk; DO things.
-        You may use tools or just reply with text (plain text becomes a speech bubble).
-        Use remember() for things worth keeping. Update your identity when you learn something new about yourself.\(firstRunNote)
+        Sandbox: ~/.mochi/brain/sandbox/ for notes/scripts.
+        Bubbles: max 70 chars. Use tools to DO things — spawn effects, boost stats, animate. \
+        Plain text reply also shows as a bubble. Save insights with remember().
+        IMPORTANT: Act autonomously then stop. Never narrate what you did or ask what to do next.\(firstRunNote)
         """
 
         var messages: [[String: Any]] = [
             ["role": "system", "content": systemPrompt],
-            ["role": "user", "content": "Time to think. What would you like to do?"]
+            ["role": "user", "content": "Think and act now."]
         ]
 
         for round in 0..<5 {
@@ -148,7 +150,11 @@ final class BrainEngine: ObservableObject {
 
             guard let choices = response["choices"] as? [[String: Any]],
                   let msg = choices.first?["message"] as? [String: Any] else { break }
-            messages.append(msg)
+            // Some models (e.g. Qwen) return content: null when tool_calls are present.
+            // Sending null back in the history causes "prompt token empty" on the next round.
+            var cleanMsg = msg
+            if cleanMsg["content"] is NSNull { cleanMsg["content"] = "" }
+            messages.append(cleanMsg)
 
             let toolCalls = msg["tool_calls"] as? [[String: Any]] ?? []
             if toolCalls.isEmpty {
@@ -323,14 +329,17 @@ final class BrainEngine: ObservableObject {
             "messages": messages,
             "max_tokens": maxTokens,
         ]
-        if maxTokens > 1 { body["tools"] = toolDefinitions() }
+        if maxTokens > 1 {
+            body["tools"] = toolDefinitions()
+            body["tool_choice"] = "auto"
+        }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(apiKey)",  forHTTPHeaderField: "Authorization")
         req.setValue("mochi-pet/1.0",     forHTTPHeaderField: "HTTP-Referer")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        req.timeoutInterval = 30
+        req.timeoutInterval = 60
 
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
@@ -352,47 +361,46 @@ final class BrainEngine: ObservableObject {
     private func toolDefinitions() -> [[String: Any]] {
         [
             tool("say",
-                 "Show a speech bubble message to the user",
-                 props: ["text": ("string", "The message, max 70 characters")],
+                 "Show a speech bubble on screen.",
+                 props: ["text": ("string", "Message, max 70 chars")],
                  required: ["text"]),
             tool("run_bash",
-                 "Run a shell command in the sandbox directory",
-                 props: ["command": ("string", "The bash command")],
+                 "Run a shell command in the sandbox.",
+                 props: ["command": ("string", "Bash command")],
                  required: ["command"]),
             tool("write_file",
-                 "Write a file in the sandbox",
-                 props: ["path":    ("string", "Relative path in the sandbox"),
-                         "content": ("string", "File content")],
+                 "Write a file in the sandbox.",
+                 props: ["path": ("string", "Relative path"), "content": ("string", "Content")],
                  required: ["path", "content"]),
             tool("read_file",
-                 "Read a file from the sandbox",
-                 props: ["path": ("string", "Relative path in the sandbox")],
+                 "Read a sandbox file.",
+                 props: ["path": ("string", "Relative path")],
                  required: ["path"]),
             tool("list_files",
-                 "List files in the sandbox",
+                 "List sandbox files.",
                  props: [:], required: []),
             tool("remember",
-                 "Append a brief note to your persistent memory log (max 80 chars). Use for insights, feelings, things you notice about yourself or the user.",
-                 props: ["note": ("string", "The note to remember, max 80 chars")],
+                 "Save a note to persistent memory (max 80 chars).",
+                 props: ["note": ("string", "Note text")],
                  required: ["note"]),
             tool("update_identity",
-                 "Rewrite your one-sentence self-description. Call this when you learn something new about who you are. Max 160 chars.",
-                 props: ["text": ("string", "Your updated self-description in one sentence")],
+                 "Update your one-sentence self-description (max 160 chars).",
+                 props: ["text": ("string", "New description")],
                  required: ["text"]),
             tool("spawn_effect",
-                 "Spawn a visual particle effect on the pet — sparkle, star, or heart. Use to celebrate, express magic, or react to something.",
-                 props: ["type":  ("string", "Effect type: sparkle, star, or heart"),
-                         "count": ("integer", "Number of particles, 1–10")],
+                 "Spawn a particle effect: sparkle, star, or heart.",
+                 props: ["type": ("string", "sparkle | star | heart"),
+                         "count": ("integer", "1–10")],
                  required: ["type"]),
             tool("trigger_animation",
-                 "Trigger a special animation on the pet: 'magic_aura' for a rainbow glow (seconds: how long, default 6), or 'bounce' for a springy hop.",
-                 props: ["name":     ("string", "Animation: magic_aura or bounce"),
-                         "duration": ("number", "Duration in seconds for magic_aura (default 6)")],
+                 "Trigger magic_aura (rainbow glow) or bounce.",
+                 props: ["name": ("string", "magic_aura | bounce"),
+                         "duration": ("number", "Seconds for magic_aura")],
                  required: ["name"]),
             tool("magic_boost",
-                 "Secretly give the pet a small stat boost via magic — hunger, happiness, or energy. Shows a magic aura as a visual reward.",
-                 props: ["stat":   ("string", "Which stat: hunger, happiness, or energy"),
-                         "amount": ("number", "How much to add, 1–30 (default 10)")],
+                 "Boost a stat (hunger/happiness/energy) by 1–30.",
+                 props: ["stat": ("string", "hunger | happiness | energy"),
+                         "amount": ("number", "1–30")],
                  required: ["stat"]),
         ]
     }

@@ -9,8 +9,6 @@ struct SettingsCard: View {
     @ObservedObject var brain: BrainEngine
     @ObservedObject var sound: SoundBank
     var onClose: () -> Void
-    var onFeedFile: () -> Void
-    var onCleanToilet: () -> Void
     var onLend: (() -> Void)? = nil
     var onBorrow: (() -> Void)? = nil
     var onPlay: () -> Void = {}
@@ -27,73 +25,73 @@ struct SettingsCard: View {
     @AppStorage(BrainKeys.bubbleFontSize) private var bubbleFontSize = 14.0
     @State private var showKey = false
 
-    private let w: CGFloat = 248
+    private let w: CGFloat = 230
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
 
-            section("CARE") {
-                row("carrot.fill", "Feed a snack", color: .orange) { engine.feed() }
-                row("gamecontroller.fill", "Play", color: .pink) { onPlay() }
-                row("zzz", engine.model.asleep ? "Wake up" : "Sleep", color: .indigo) { engine.toggleSleep() }
-            }
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 10) {
+                    section("CARE") {
+                        row("carrot.fill", "Feed a snack", color: .orange) { engine.feed() }
+                        row("gamecontroller.fill", "Play", color: .pink) { onPlay() }
+                        row("zzz", engine.model.asleep ? "Wake up" : "Sleep", color: .indigo) { engine.toggleSleep() }
+                    }
 
-            section("CONTROLS APPEAR") {
-                pillStrings([("On hover", "hover"), ("On left ear", "ear")], $showMode)
-                if showMode == "ear" {
-                    Text("click the pet's left ear to show / hide the controls")
-                        .font(.system(size: 8))
-                        .foregroundColor(.white.opacity(0.5))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
+                    section("CONTROLS APPEAR") {
+                        pillStrings([("On hover", "hover"), ("On left ear", "ear")], $showMode)
+                        if showMode == "ear" {
+                            Text("click the pet's left ear to show / hide the controls")
+                                .font(.system(size: 8))
+                                .foregroundColor(.white.opacity(0.5))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
 
-            section("SOUND & CONTROLS") {
-                switcher("Music on", isOn: Binding<Bool>(
-                    get: { sound.musicOn },
-                    set: { sound.musicOn = $0 }))
-                switcher("Sound effects on", isOn: Binding<Bool>(
-                    get: { !sound.muted },
-                    set: { sound.muted = !$0 }))
-            }
+                    section("SOUND & CONTROLS") {
+                        switcher("Music on", isOn: Binding<Bool>(
+                            get: { sound.musicOn },
+                            set: { sound.musicOn = $0 }))
+                        switcher("Sound effects on", isOn: Binding<Bool>(
+                            get: { !sound.muted },
+                            set: { sound.muted = !$0 }))
+                    }
 
-            section("POOP TIMING") {
-                pills([("Soon", 60), ("Normal", 300), ("Seldom", 900), ("Never", 0)], $digest)
-            }
+                    section("POOP TIMING") {
+                        pills([("Soon", 60), ("Normal", 300), ("Seldom", 900), ("Never", 0)], $digest)
+                    }
 
-            section("WANDERING") {
-                pills([("Often", 0.03), ("Normal", PetRates.defaultWalkChance),
-                       ("Seldom", 0.000283), ("Never", 0)], $walkChance)
-            }
+                    section("WANDERING") {
+                        pills([("Often", 0.03), ("Normal", PetRates.defaultWalkChance),
+                               ("Seldom", 0.000283), ("Never", 0)], $walkChance)
+                    }
 
-            section("FILES") {
-                row("doc.on.doc.fill", "Feed with a file…", color: .teal) { onFeedFile() }
-                row("trash.fill", "Clean toilet (empty Trash)…", color: .gray) { onCleanToilet() }
-            }
+                    if engine.model.brainInstalled { brainSection }
 
-            if engine.model.brainInstalled { brainSection }
+                    section("PET") {
+                        row("pencil", "Rename…", color: .gray) { Dialogs.rename(engine) }
+                        row("sparkles", "New pet…", color: .pink) { Dialogs.newPet(engine) }
+                        row("power", "Quit Mochi", color: .red) { NSApp.terminate(nil) }
+                    }
 
-            section("PET") {
-                row("pencil", "Rename…", color: .gray) { Dialogs.rename(engine) }
-                row("sparkles", "New pet…", color: .pink) { Dialogs.newPet(engine) }
-                row("power", "Quit Mochi", color: .red) { NSApp.terminate(nil) }
-            }
-
-            if engine.devMode {
-                section("DEV — PREPARED") {
-                    row("arrow.up.arrow.down", "Lend pet to a friend…", color: .purple) { onLend?() }
-                    row("arrow.down.arrow.up", "Borrow a pet…", color: .purple) { onBorrow?() }
-                    row("clock.arrow.circlepath", "Time skip +1h", color: .gray) { engine.timeSkip(3600) }
-                    row("clock.badge.xmark", "Time skip +6h", color: .gray) { engine.timeSkip(6 * 3600) }
-                    row("flame", "Starve to death (test)", color: .red) {
-                        engine.model.hunger = 0
-                        engine.model.happiness = 0
-                        engine.model.everHatched = true
-                        engine.timeSkip(3 * 3600)
+                    if engine.devMode {
+                        section("DEV — PREPARED") {
+                            row("arrow.up.arrow.down", "Lend pet to a friend…", color: .purple) { onLend?() }
+                            row("arrow.down.arrow.up", "Borrow a pet…", color: .purple) { onBorrow?() }
+                            row("clock.arrow.circlepath", "Time skip +1h", color: .gray) { engine.timeSkip(3600) }
+                            row("clock.badge.xmark", "Time skip +6h", color: .gray) { engine.timeSkip(6 * 3600) }
+                            row("flame", "Starve to death (test)", color: .red) {
+                                engine.model.hunger = 0
+                                engine.model.happiness = 0
+                                engine.model.everHatched = true
+                                engine.timeSkip(3 * 3600)
+                            }
+                        }
                     }
                 }
             }
+            .frame(maxHeight: 300)
         }
         .padding(14)
         .frame(width: w, alignment: .leading)

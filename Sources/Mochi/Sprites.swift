@@ -41,6 +41,7 @@ enum Pal {
         "X": RGBA(r: 0.95, g: 0.87, b: 0.62),   // sand (warm pale yellow)
         "Q": RGBA(r: 0.80, g: 0.68, b: 0.42),   // sand shade / wet sand
         "F": RGBA(r: 0.98, g: 0.42, b: 0.42),   // toy red (bucket)
+        "U": RGBA(r: 0.62, g: 0.87, b: 0.74),   // ear inner (breed-overridden; default = body mint)
     ]
     static let fallback = RGBA(r: 1, g: 0, b: 1)
     static func color(_ c: Character) -> Color {
@@ -102,8 +103,8 @@ enum Sprites {
     // Rounded 10x10 blob body with cat ears. dy shifts it up (legs need rows).
     private static func body(_ b: Builder, skin: Character, earL: Int, earR: Int,
                              belly: Bool, blush: Bool, feet: Character, dy: Int = 0) {
-        ear(b, earL, skin, dy)
-        ear(b, earR, skin, dy)
+        ear(b, earL, "U", dy)
+        ear(b, earR, "U", dy)
         b.rect(4, 5 + dy, 8, 1, "K")          // top outline
         b.rect(3, 6 + dy, 1, 8, "K")          // left outline
         b.rect(12, 6 + dy, 1, 8, "K")          // right outline
@@ -115,19 +116,29 @@ enum Sprites {
         if blush { b.p(4, 9 + dy, "P"); b.p(11, 9 + dy, "P") }
     }
 
-    private static func eyes(_ b: Builder, open: Bool, _ dy: Int = 0, look: Int = 0) {
+    private static func eyes(_ b: Builder, open: Bool, _ dy: Int = 0, look: Int = 0, wink: Bool = false) {
         let lx = 5 + look, rx = 9 + look
         if open {
-            b.rect(lx, 7 + dy, 2, 2, "E"); b.rect(rx, 7 + dy, 2, 2, "E")
+            b.rect(lx, 7 + dy, 2, 2, "E")
+            if wink {
+                b.rect(rx, 8 + dy, 2, 1, "E")   // right eye half-closed
+            } else {
+                b.rect(rx, 7 + dy, 2, 2, "E")
+            }
         } else {
             b.rect(lx, 8 + dy, 2, 1, "E"); b.rect(rx, 8 + dy, 2, 1, "E")
         }
     }
 
     /// The friendly little :3 mouth — resting default, so it never looks sad.
-    private static func smile(_ b: Builder, _ dy: Int = 0) {
-        b.rect(7, 9 + dy, 2, 1, "K")
-        b.p(6, 10 + dy, "K"); b.p(9, 10 + dy, "K")
+    private static func smile(_ b: Builder, _ dy: Int = 0, big: Bool = false) {
+        if big {
+            b.rect(6, 9 + dy, 4, 1, "K")
+            b.p(5, 10 + dy, "K"); b.p(10, 10 + dy, "K")
+        } else {
+            b.rect(7, 9 + dy, 2, 1, "K")
+            b.p(6, 10 + dy, "K"); b.p(9, 10 + dy, "K")
+        }
     }
 
     private static func eggShell(_ b: Builder) {
@@ -231,8 +242,8 @@ enum Sprites {
     /// Water tint (below waist) is applied by the ContentView swim gradient overlay —
     /// no water pixels baked into the sprite to avoid double-blue.
     private static func swimmer(_ b: Builder, phase: Int) {
-        ear(b, 4, "B", 0)
-        ear(b, 9, "B", 0)
+        ear(b, 4, "U", 0)
+        ear(b, 9, "U", 0)
         // Head + full body (same silhouette as idleA — gradient needs pixels to mask)
         b.rect(4, 5, 8, 1, "K")
         b.rect(3, 6, 1, 8, "K"); b.rect(12, 6, 1, 8, "K")
@@ -283,7 +294,7 @@ enum Sprites {
     private static func bedSleep(_ b: Builder, phase: Int) {
         // Cream pillow background fills top rows so desktop never shows through
         b.rect(0, 0, 16, 6, "W")
-        ear(b, 4, "B", 0); ear(b, 9, "B", 0)
+        ear(b, 4, "U", 0); ear(b, 9, "U", 0)
         b.rect(4, 5, 8, 1, "K")
         b.rect(3, 6, 1, 4, "K"); b.rect(12, 6, 1, 4, "K")
         b.rect(4, 6, 8, 4, "B")
@@ -357,36 +368,38 @@ enum Sprites {
 
     // MARK: frames
 
-    static func grid(_ f: Frame) -> SpriteGrid {
+    static func grid(_ f: Frame, traits: PetTraits? = nil) -> SpriteGrid {
         let b = Builder()
+        let wink = traits?.wink ?? false
+        let big  = traits?.bigSmile ?? false
         switch f {
         // Resting default: friendly :3 face (never looks sad by default)
         case .idleA, .walkA:
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
-            eyes(b, open: true)
-            smile(b)
+            eyes(b, open: true, wink: wink)
+            smile(b, big: big)
         case .walkB:
             body(b, skin: "B", earL: 5, earR: 9, belly: true, blush: true, feet: "S")
-            eyes(b, open: true)
-            smile(b)
+            eyes(b, open: true, wink: wink)
+            smile(b, big: big)
         case .blink:
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
             eyes(b, open: false)
-            smile(b)
+            smile(b, big: big)
         // Expression variants (randomly rotated while resting)
         case .lookL:
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
-            eyes(b, open: true, look: -1)
-            smile(b)
+            eyes(b, open: true, look: -1, wink: wink)
+            smile(b, big: big)
         case .lookR:
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
-            eyes(b, open: true, look: 1)
-            smile(b)
+            eyes(b, open: true, look: 1, wink: wink)
+            smile(b, big: big)
         case .smug:   // one-eye wink + :3 — very pleased with itself
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
             b.rect(5, 7, 2, 2, "E")            // left eye open
             b.rect(9, 8, 2, 1, "E")            // right eye winked
-            smile(b)
+            smile(b, big: big)
         case .happyA, .happyB:
             // ^ ^ content squint + :3 smile — deliberately STILL
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
@@ -413,11 +426,11 @@ enum Sprites {
             }
         case .eatA, .eatB:
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
-            eyes(b, open: true)
+            eyes(b, open: true, wink: wink)
             if f == .eatA { b.rect(7, 9, 2, 2, "E") } else { b.rect(7, 9, 2, 1, "E") }
         case .lick:
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
-            eyes(b, open: true)
+            eyes(b, open: true, wink: wink)
             b.rect(6, 9, 4, 1, "E")          // small open mouth
             b.p(6, 10, "Y")                 // tongue tip
         case .chompA:   // HUGE mouth wide open (a file is coming!)
@@ -440,49 +453,49 @@ enum Sprites {
             if f == .strainA { b.p(2, 6, "W"); b.p(13, 8, "W") } else { b.p(13, 6, "W"); b.p(2, 8, "W") }
         case .standA:   // legged, resting on all fours
             legBody(b)
-            eyes(b, open: true, -2)
-            smile(b, -2)
+            eyes(b, open: true, -2, wink: wink)
+            smile(b, -2, big: big)
             legs(b, pawLX: 4, pawRX: 10)
         case .standB:   // resting, one paw lifted (cat twitch)
             legBody(b)
-            eyes(b, open: true, -2)
-            smile(b, -2)
+            eyes(b, open: true, -2, wink: wink)
+            smile(b, -2, big: big)
             legs(b, pawLX: 4, pawRX: 10, liftR: true)
         case .standLookL:
             legBody(b)
-            eyes(b, open: true, -2, look: -1)
-            smile(b, -2)
+            eyes(b, open: true, -2, look: -1, wink: wink)
+            smile(b, -2, big: big)
             legs(b, pawLX: 4, pawRX: 10)
         case .standLookR:
             legBody(b)
-            eyes(b, open: true, -2, look: 1)
-            smile(b, -2)
+            eyes(b, open: true, -2, look: 1, wink: wink)
+            smile(b, -2, big: big)
             legs(b, pawLX: 4, pawRX: 10)
         case .standSmug:
             legBody(b)
             b.rect(5, 5, 2, 2, "E")            // left eye open
             b.rect(9, 6, 2, 1, "E")            // right eye winked
-            smile(b, -2)
+            smile(b, -2, big: big)
             legs(b, pawLX: 4, pawRX: 10)
         case .walkLegsA:   // trot: paws apart
             legBody(b)
-            eyes(b, open: true, -2)
-            smile(b, -2)
+            eyes(b, open: true, -2, wink: wink)
+            smile(b, -2, big: big)
             legs(b, pawLX: 5, pawRX: 9)
         case .walkLegsB:   // trot: paws together, ear flick
             legBody(b, earL: 5)
-            eyes(b, open: true, -2)
-            smile(b, -2)
+            eyes(b, open: true, -2, wink: wink)
+            smile(b, -2, big: big)
             legs(b, pawLX: 4, pawRX: 10)
         case .dangleA:   // picked up: legs splayed out mid-kick
             legBody(b)
-            eyes(b, open: true, -2)
+            eyes(b, open: true, -2, wink: wink)
             b.rect(3, 13, 2, 3, "S"); b.rect(11, 13, 2, 3, "S")
             b.rect(2, 13, 1, 3, "K"); b.rect(13, 13, 1, 3, "K")
             b.rect(3, 15, 2, 1, "W"); b.rect(11, 15, 2, 1, "W")
         case .dangleB:   // picked up: legs together
             legBody(b)
-            eyes(b, open: true, -2)
+            eyes(b, open: true, -2, wink: wink)
             b.rect(5, 13, 2, 3, "S"); b.rect(9, 13, 2, 3, "S")
             b.rect(4, 13, 1, 3, "K"); b.rect(11, 13, 1, 3, "K")
             b.rect(5, 15, 2, 1, "W"); b.rect(9, 15, 2, 1, "W")
@@ -495,20 +508,20 @@ enum Sprites {
         case .stand2A:   // legs + ARMS (evolution stage 2+)
             legBody(b)
             arms(b, 0)
-            eyes(b, open: true, -2)
-            smile(b, -2)
+            eyes(b, open: true, -2, wink: wink)
+            smile(b, -2, big: big)
             legs(b, pawLX: 4, pawRX: 10)
         case .stand2B:
             legBody(b)
             arms(b, 0)
-            eyes(b, open: true, -2)
-            smile(b, -2)
+            eyes(b, open: true, -2, wink: wink)
+            smile(b, -2, big: big)
             legs(b, pawLX: 4, pawRX: 10, liftR: true)
         case .wave2:   // waving hello
             legBody(b)
             wave(b)
-            eyes(b, open: true, -2)
-            smile(b, -2)
+            eyes(b, open: true, -2, wink: wink)
+            smile(b, -2, big: big)
             legs(b, pawLX: 4, pawRX: 10)
         case .cool2:   // gadget stage: shades, too cool to move
             legBody(b)
@@ -519,19 +532,19 @@ enum Sprites {
         case .walkLegs2A:
             legBody(b)
             arms(b, 0)
-            eyes(b, open: true, -2)
-            smile(b, -2)
+            eyes(b, open: true, -2, wink: wink)
+            smile(b, -2, big: big)
             legs(b, pawLX: 5, pawRX: 9)
         case .walkLegs2B:
             legBody(b, earL: 5)
             arms(b, 0)
-            eyes(b, open: true, -2)
-            smile(b, -2)
+            eyes(b, open: true, -2, wink: wink)
+            smile(b, -2, big: big)
             legs(b, pawLX: 4, pawRX: 10)
         case .dangle2A:   // picked up: kicks legs, flails arms
             legBody(b)
             arms(b, -1)
-            eyes(b, open: true, -2)
+            eyes(b, open: true, -2, wink: wink)
             b.rect(3, 13, 2, 3, "S"); b.rect(11, 13, 2, 3, "S")
             b.rect(2, 13, 1, 3, "K"); b.rect(13, 13, 1, 3, "K")
             b.rect(3, 15, 2, 1, "W"); b.rect(11, 15, 2, 1, "W")
@@ -543,7 +556,7 @@ enum Sprites {
             b.rect(13, 8, 1, 3, "S"); b.rect(14, 8, 1, 3, "K")
             b.p(2, 7, "W"); b.p(13, 7, "W")
             b.rect(5, 15, 2, 1, "W"); b.rect(9, 15, 2, 1, "W")
-            eyes(b, open: true, -2)
+            eyes(b, open: true, -2, wink: wink)
         case .swimA:
             swimmer(b, phase: 0)
         case .swimB:
@@ -639,28 +652,27 @@ enum Sprites {
         case .spinA:   // play: spin (dizzy squint)
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
             eyes(b, open: false)
-            smile(b)
+            smile(b, big: big)
         case .spinB:
             body(b, skin: "B", earL: 5, earR: 9, belly: true, blush: true, feet: "S")
-            eyes(b, open: true)
-            smile(b)
+            eyes(b, open: true, wink: wink)
+            smile(b, big: big)
         case .saltoA:   // play: salto (arms flail, mid-flight mouth)
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
-            eyes(b, open: true)
-            b.rect(7, 9, 2, 1, "K")
-            b.p(6, 10, "K"); b.p(9, 10, "K")
+            eyes(b, open: true, wink: wink)
+            smile(b, big: big)
         case .saltoB:
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
-            eyes(b, open: true, look: 1)
-            smile(b)
+            eyes(b, open: true, look: 1, wink: wink)
+            smile(b, big: big)
         case .zoomA:   // play: zoom (big confident stretch)
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
-            eyes(b, open: true)
-            smile(b)
+            eyes(b, open: true, wink: wink)
+            smile(b, big: big)
         case .zoomB:
             body(b, skin: "B", earL: 4, earR: 9, belly: true, blush: true, feet: "S")
             eyes(b, open: false)
-            smile(b)
+            smile(b, big: big)
         }
         return b.finish()
     }

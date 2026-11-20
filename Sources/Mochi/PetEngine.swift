@@ -24,6 +24,12 @@ struct PoopRecord: Codable, Identifiable {
     let dy: Double
 }
 
+struct PetTraits: Codable {
+    var wink: Bool = false       // right eye permanently half-squinted (~20% of Mochis)
+    var bigSmile: Bool = false   // wider :3 mouth (~25%)
+    var earInner: String? = nil  // nil=body color, "brown", "sky", "blush" (~30%)
+}
+
 struct PetModel: Codable {
     var name: String = "Mochi"
     var bornAt: Date = Date()
@@ -62,6 +68,7 @@ struct PetModel: Codable {
     var sandboxX: Double = -1
     var sandboxY: Double = -1
     var lentOut: Bool?            // true while this Mochi is on another machine (stats frozen)
+    var traits: PetTraits?       // visual variety (wink, big smile, ear color)
     var chub: Double?             // 0...100: eating too much / not playing enough
     var lastEaten: [String]?      // file names in the belly, waiting to be pooped
     var lastMealAt: Date?
@@ -147,6 +154,7 @@ final class PetEngine: ObservableObject {
     @Published var playMode: PlayMode = .toss
     @Published var playUntil: Date?
     @Published var clickCount = 0          // consecutive pet clicks -> easter egg
+    private var lastEggClickAt: Date?
     @Published var inflateUntil: Date?    // balloon inflate -> float
     // Growing: size follows age; a springy bounce plays at milestones.
     @Published var growBounceUntil: Date?
@@ -752,6 +760,17 @@ final class PetEngine: ObservableObject {
 
     // MARK: - Breed (random colors: every pet feels unique)
 
+    static func randomTraits() -> PetTraits {
+        var t = PetTraits()
+        t.wink = Double.random(in: 0...1) < 0.20
+        t.bigSmile = Double.random(in: 0...1) < 0.25
+        let r = Double.random(in: 0...1)
+        if r < 0.10      { t.earInner = "brown" }
+        else if r < 0.20 { t.earInner = "sky"   }
+        else if r < 0.30 { t.earInner = "blush" }
+        return t
+    }
+
     var breed: Breed {
         Breed.all.first { $0.name == model.breedName } ?? Breed.all[0]
     }
@@ -759,11 +778,19 @@ final class PetEngine: ObservableObject {
     /// Sprite palette override for the breed colors.
     var breedOverrides: [Character: Color] {
         let b = breed
-        return [
-            "B": Color(red: b.body.0, green: b.body.1, blue: b.body.2),
+        var o: [Character: Color] = [
+            "B": Color(red: b.body.0,  green: b.body.1,  blue: b.body.2),
             "S": Color(red: b.shade.0, green: b.shade.1, blue: b.shade.2),
             "P": Color(red: b.blush.0, green: b.blush.1, blue: b.blush.2),
+            "U": Color(red: b.body.0,  green: b.body.1,  blue: b.body.2),
         ]
+        switch model.traits?.earInner {
+        case "brown": o["U"] = Color(red: 0.68, green: 0.44, blue: 0.26)
+        case "sky":   o["U"] = Color(red: 0.55, green: 0.80, blue: 0.98)
+        case "blush": o["U"] = Color(red: 1.00, green: 0.72, blue: 0.80)
+        default: break
+        }
+        return o
     }
 
     // MARK: - Actions
@@ -1070,6 +1097,10 @@ final class PetEngine: ObservableObject {
     func easterEggClick() {
         guard !model.dead, model.everHatched, !model.asleep else { return }
         guard !inflateActive else { return }
+        if let last = lastEggClickAt, now.timeIntervalSince(last) > 1.5 {
+            clickCount = 0
+        }
+        lastEggClickAt = now
         clickCount += 1
         if clickCount >= 10 { startInflate() }
     }
@@ -1196,6 +1227,7 @@ final class PetEngine: ObservableObject {
         fresh.bornAt = now
         fresh.lastTick = now
         fresh.breedName = Breed.random().name
+        fresh.traits = PetEngine.randomTraits()
         fresh.eggProgress = 0
         fresh.hatchedAt = nil
         fresh.windowX = model.windowX
@@ -1254,6 +1286,7 @@ final class PetEngine: ObservableObject {
         model = loaded
         if model.lastEaten == nil { model.lastEaten = [] }
         if model.breedName == nil { model.breedName = Breed.random().name }
+        if model.traits == nil { model.traits = PetEngine.randomTraits(); save() }
         if model.everHatched == false, model.eggProgress == nil {
             model.eggProgress = min(max(0, age), PetRates.eggSeconds * 0.5)   // old egg: half credit
         }

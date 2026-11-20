@@ -20,10 +20,11 @@ struct PixelSpriteView: View {
     let scale: CGFloat
     var tint: Color? = nil
     var overrides: [Character: Color] = [:]   // breed colors
+    var traits: PetTraits? = nil
 
     var body: some View {
         Canvas { ctx, size in
-            let g = Sprites.grid(frame)
+            let g = Sprites.grid(frame, traits: traits)
             let cell = size.width / CGFloat(SpriteGrid.size)
             for y in 0..<SpriteGrid.size {
                 for x in 0..<SpriteGrid.size {
@@ -276,7 +277,8 @@ struct PetRootView: View {
 
     private func petView(mood: Mood, frame: Frame, t: Double) -> some View {
         ZStack {
-            PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides)
+            PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                            traits: engine.model.traits)
                 .shadow(color: .black.opacity(0.3), radius: 4, y: 3)
             earGlow(frame: frame, t: t)
             // retro temp display, painted directly on the egg shell
@@ -293,7 +295,8 @@ struct PetRootView: View {
             )
             .frame(width: 16.0 * scale, height: 16.0 * scale * 0.35)
             .frame(width: 16.0 * scale, height: 16.0 * scale, alignment: .bottom)
-            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides))
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                                  traits: engine.model.traits))
             .opacity(engine.isHoveringPool && !engine.swimActive ? 1 : 0)
             .animation(.easeInOut(duration: 0.25), value: engine.isHoveringPool)
             .allowsHitTesting(false)
@@ -308,7 +311,8 @@ struct PetRootView: View {
             )
             .frame(width: 16.0 * scale, height: 16.0 * scale * 0.35)
             .frame(width: 16.0 * scale, height: 16.0 * scale, alignment: .bottom)
-            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides))
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                                  traits: engine.model.traits))
             .opacity(engine.isHoveringBed && !engine.bedSleepActive ? 1 : 0)
             .animation(.easeInOut(duration: 0.25), value: engine.isHoveringBed)
             .allowsHitTesting(false)
@@ -323,7 +327,8 @@ struct PetRootView: View {
             )
             .frame(width: 16.0 * scale, height: 16.0 * scale * 0.40)
             .frame(width: 16.0 * scale, height: 16.0 * scale, alignment: .bottom)
-            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides))
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                                  traits: engine.model.traits))
             .opacity(engine.isHoveringSandbox && !engine.sandboxPlayActive ? 1 : 0)
             .animation(.easeInOut(duration: 0.25), value: engine.isHoveringSandbox)
             .allowsHitTesting(false)
@@ -337,7 +342,8 @@ struct PetRootView: View {
                 startPoint: .top, endPoint: .bottom
             )
             .frame(width: 16.0 * scale, height: 16.0 * scale)
-            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides))
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                                  traits: engine.model.traits))
             .opacity(engine.bedSleepActive ? 1 : 0)
             .animation(.easeInOut(duration: 0.5), value: engine.bedSleepActive)
             .allowsHitTesting(false)
@@ -352,7 +358,8 @@ struct PetRootView: View {
                 startPoint: .top, endPoint: .bottom
             )
             .frame(width: 16.0 * scale, height: 16.0 * scale)
-            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides))
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                                  traits: engine.model.traits))
             .opacity(engine.swimActive ? 1 : 0)
             .animation(.easeInOut(duration: 0.5), value: engine.swimActive)
             .allowsHitTesting(false)
@@ -918,7 +925,8 @@ struct PetRootView: View {
                     .fill(Color(red: 0.12, green: 0.42, blue: 0.88).opacity(0.90 * opacity))
                     .frame(width: 16.0 * scale, height: 16.0 * scale)
                     .mask(PixelSpriteView(frame: frame, scale: scale,
-                                         overrides: engine.breedOverrides))
+                                         overrides: engine.breedOverrides,
+                                         traits: engine.model.traits))
                     .allowsHitTesting(false)
             }
         }
@@ -940,7 +948,8 @@ struct PetRootView: View {
                     .fill(Color(red: 0.12, green: 0.42, blue: 0.88).opacity(0.78 * opacity))
                     .frame(width: 16.0 * scale, height: 16.0 * scale)
                     .mask(PixelSpriteView(frame: frame, scale: scale,
-                                         overrides: engine.breedOverrides))
+                                         overrides: engine.breedOverrides,
+                                         traits: engine.model.traits))
                     .allowsHitTesting(false)
             }
         }
@@ -1029,7 +1038,7 @@ struct SpeechBubble: View {
             bubbleBody
             bubbleTail
         }
-        .frame(maxWidth: 180)
+        .frame(maxWidth: 220)
         .allowsHitTesting(false)
     }
 
@@ -1042,7 +1051,7 @@ struct SpeechBubble: View {
                     .font(PixelFont.font(fontSize))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                    .lineLimit(6)
+                    .lineLimit(8)
                     .fixedSize(horizontal: false, vertical: true)
                     .shadow(color: .black.opacity(0.55), radius: 1, y: 1)
             }
@@ -1539,7 +1548,7 @@ struct SandboxRootView: View {
             let xFrac: CGFloat = i % 2 == 0 ? 0.32 : 0.68
             let isTransferred = engine.sandboxSession?.transferOrigins[guest.breedName ?? ""] != nil
             VStack(spacing: 2) {
-                PixelSpriteView(frame: .idleA, scale: 3.0, overrides: overrides)
+                PixelSpriteView(frame: .idleA, scale: 3.0, overrides: overrides, traits: guest.traits)
                     .offset(y: bob)
                 if isTransferred {
                     Button(action: {
@@ -1577,11 +1586,19 @@ struct SandboxRootView: View {
     private func breedOverrides(for model: PetModel) -> [Character: Color] {
         guard let name = model.breedName,
               let breed = Breed.all.first(where: { $0.name == name }) else { return [:] }
-        return [
+        var o: [Character: Color] = [
             "B": Color(red: breed.body.0,  green: breed.body.1,  blue: breed.body.2),
             "S": Color(red: breed.shade.0, green: breed.shade.1, blue: breed.shade.2),
             "P": Color(red: breed.blush.0, green: breed.blush.1, blue: breed.blush.2),
+            "U": Color(red: breed.body.0,  green: breed.body.1,  blue: breed.body.2),
         ]
+        switch model.traits?.earInner {
+        case "brown": o["U"] = Color(red: 0.68, green: 0.44, blue: 0.26)
+        case "sky":   o["U"] = Color(red: 0.55, green: 0.80, blue: 0.98)
+        case "blush": o["U"] = Color(red: 1.00, green: 0.72, blue: 0.80)
+        default: break
+        }
+        return o
     }
 }
 

@@ -17,7 +17,7 @@ struct ShopCard: View {
 
     @State private var tab: ShopTab = .shop
 
-    private let w: CGFloat = 248
+    private let w: CGFloat = 230
 
     enum ShopTab { case shop, gadgets }
 
@@ -25,10 +25,13 @@ struct ShopCard: View {
         VStack(alignment: .leading, spacing: 10) {
             shopHeader
             tabPicker
-            switch tab {
-            case .shop:    shopContent
-            case .gadgets: gadgetsContent
+            ScrollView(.vertical, showsIndicators: false) {
+                switch tab {
+                case .shop:    shopContent
+                case .gadgets: gadgetsContent
+                }
             }
+            .frame(maxHeight: 280)
         }
         .padding(14)
         .frame(width: w, alignment: .leading)

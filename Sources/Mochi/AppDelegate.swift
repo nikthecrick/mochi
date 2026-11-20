@@ -221,14 +221,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             brain: brain,
             sound: sound,
             onClose: { [weak self] in self?.settingsPanel?.orderOut(nil) },
-            onFeedFile: { [weak self] in
-                self?.settingsPanel?.orderOut(nil)
-                Dialogs.eatFilePicker(self?.engine ?? PetEngine())
-            },
-            onCleanToilet: { [weak self] in
-                self?.settingsPanel?.orderOut(nil)
-                self?.emptyTrash()
-            },
             onLend: engine.devMode ? { [weak self] in
                 self?.settingsPanel?.orderOut(nil)
                 Dialogs.lend(self?.engine ?? PetEngine())
