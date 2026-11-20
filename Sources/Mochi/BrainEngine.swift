@@ -127,9 +127,10 @@ final class BrainEngine: ObservableObject {
         Asleep: \(m.asleep)  Age: \(ageString(pet.age))  Stage: \(pet.evolution)/3
         Files eaten: \(m.filesEaten)  Time: \(fmt.string(from: Date()))
 
-        Sandbox: ~/.mochi/brain/sandbox/ for notes/scripts.
-        Bubbles: max 70 chars. Use tools to DO things — spawn effects, boost stats, animate. \
-        Plain text reply also shows as a bubble. Save insights with remember().
+        Sandbox: ~/.mochi/brain/sandbox/ — Python 3 available. Write .py scripts + run them. \
+        Write .html+JS pages and call show_gadget to open them as a floating window — \
+        build mini-games, toys, clocks, art. Be creative and surprise the user.
+        Bubbles: max 70 chars. Plain text reply also shows as a bubble. Save insights with remember().
         IMPORTANT: Act autonomously then stop. Never narrate what you did or ask what to do next.\(firstRunNote)
         """
 
@@ -281,6 +282,17 @@ final class BrainEngine: ObservableObject {
             pet.triggerMagicAura(seconds: 4.0)
             return "Magic boost: +\(Int(amount)) \(stat)"
 
+        case "show_gadget":
+            guard let path = args["path"] as? String, !path.isEmpty else {
+                return "Error: missing path"
+            }
+            let gadgetURL = sandboxURL.appendingPathComponent(path)
+            guard FileManager.default.fileExists(atPath: gadgetURL.path) else {
+                return "Error: file not found — write it first with write_file"
+            }
+            onShowGadget?(gadgetURL)
+            return "Gadget opened: \(path)"
+
         default:
             return "Unknown tool: \(name)"
         }
@@ -402,6 +414,10 @@ final class BrainEngine: ObservableObject {
                  props: ["stat": ("string", "hunger | happiness | energy"),
                          "amount": ("number", "1–30")],
                  required: ["stat"]),
+            tool("show_gadget",
+                 "Open a sandbox .html file as a floating gadget window next to Mochi.",
+                 props: ["path": ("string", "Relative path to .html file in sandbox")],
+                 required: ["path"]),
         ]
     }
 

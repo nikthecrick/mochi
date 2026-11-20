@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sandboxPanel: PetPanel?
     private var settingsPanel: PetPanel?
     private var shopPanel: PetPanel?
+    private var gadgetPanel: PetPanel?
     private var activity: NSObjectProtocol?
     private var keyMonitor: Any?
 
@@ -87,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if sound.musicOn { sound.applyMusic() }   // didSet doesn't fire during init
 
         brain.pet = engine
+        brain.onShowGadget = { [weak self] url in self?.showGadget(url: url) }
         brain.start()
 
         // Pet must be in front while swimming so the swimmer sprite is fully visible.
@@ -296,6 +298,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let size = NSSize(width: 248, height: 440)
         var o = NSPoint(x: pet.frame.minX - size.width - 14,
                         y: pet.frame.maxY - size.height)
+        if let vis = NSScreen.main?.visibleFrame {
+            o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
+            o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
+        }
+        p.setFrame(NSRect(origin: o, size: size), display: true)
+    }
+
+    // MARK: - Gadget panel (brain-generated HTML shown in a floating WKWebView window)
+
+    private func showGadget(url: URL) {
+        if let p = gadgetPanel {
+            // Update the hosted view with the new URL, then bring to front
+            if let hosting = p.contentView as? NSHostingView<GadgetCard> {
+                hosting.rootView = GadgetCard(url: url, onClose: { [weak self] in
+                    self?.gadgetPanel?.orderOut(nil)
+                })
+            }
+            placeGadget(p)
+            activateAndShow(p)
+            return
+        }
+        let p = PetPanel.make()
+        p.contentView = NSHostingView(rootView: GadgetCard(
+            url: url,
+            onClose: { [weak self] in self?.gadgetPanel?.orderOut(nil) }
+        ))
+        gadgetPanel = p
+        placeGadget(p)
+        activateAndShow(p)
+    }
+
+    private func placeGadget(_ p: PetPanel) {
+        guard let pet = panel else { return }
+        let size = NSSize(width: 340, height: 380)
+        var o = NSPoint(x: pet.frame.maxX + 14, y: pet.frame.midY - size.height / 2)
         if let vis = NSScreen.main?.visibleFrame {
             o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
             o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
