@@ -12,7 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sandboxPanel: PetPanel?
     private var settingsPanel: PetPanel?
     private var shopPanel: PetPanel?
-    private var gadgetPanel: PetPanel?
+    private var gadgetPanels: [PetPanel] = []
+    private let maxGadgets = 3
+    private let gadgetLifetime: TimeInterval = 40
     private var activity: NSObjectProtocol?
     private var keyMonitor: Any?
 
@@ -305,35 +307,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         p.setFrame(NSRect(origin: o, size: size), display: true)
     }
 
-    // MARK: - Gadget panel (brain-generated HTML shown in a floating WKWebView window)
+    // MARK: - Gadget panels (floating dreams — auto-close, fan out above Mochi)
 
     private func showGadget(url: URL) {
-        if let p = gadgetPanel {
-            // Update the hosted view with the new URL, then bring to front
-            if let hosting = p.contentView as? NSHostingView<GadgetCard> {
-                hosting.rootView = GadgetCard(url: url, onClose: { [weak self] in
-                    self?.gadgetPanel?.orderOut(nil)
-                })
-            }
-            placeGadget(p)
-            activateAndShow(p)
-            return
+        // Evict the oldest if at capacity
+        if gadgetPanels.count >= maxGadgets {
+            let old = gadgetPanels.removeFirst()
+            old.orderOut(nil)
         }
         let p = PetPanel.make()
+        let idx = gadgetPanels.count   // 0, 1, or 2 — used for fan offset
         p.contentView = NSHostingView(rootView: GadgetCard(
             url: url,
-            onClose: { [weak self] in self?.gadgetPanel?.orderOut(nil) }
+            onClose: { [weak self] in self?.removeGadget(p) }
         ))
-        gadgetPanel = p
-        placeGadget(p)
+        gadgetPanels.append(p)
+        placeGadget(p, index: idx)
         activateAndShow(p)
+
+        // Auto-close after gadgetLifetime seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + gadgetLifetime) { [weak self, weak p] in
+            guard let p else { return }
+            self?.removeGadget(p)
+        }
     }
 
-    private func placeGadget(_ p: PetPanel) {
+    private func removeGadget(_ p: PetPanel) {
+        p.orderOut(nil)
+        gadgetPanels.removeAll { $0 === p }
+    }
+
+    private func placeGadget(_ p: PetPanel, index: Int) {
         guard let pet = panel else { return }
         let size = NSSize(width: 300, height: 260)
-        var o = NSPoint(x: pet.frame.midX - size.width / 2,
-                        y: pet.frame.maxY + 10)
+        // Fan: each subsequent gadget shifts right and slightly up
+        let dx = CGFloat(index) * 28
+        let dy = CGFloat(index) * 12
+        var o = NSPoint(x: pet.frame.midX - size.width / 2 + dx,
+                        y: pet.frame.maxY + 10 + dy)
         if let vis = NSScreen.main?.visibleFrame {
             o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
             o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
