@@ -191,9 +191,7 @@ struct PetRootView: View {
             if let text = engine.speechBubble {
                 SpeechBubble(text: text)
                     .padding(.horizontal, 8)
-                    // Animation is embedded in the transition so only the bubble
-                    // fades — the VStack layout change (Spacer) is instant and
-                    // Mochi never slides when the panel resizes.
+                    .padding(.bottom, -42)
                     .transition(
                         .opacity
                         .combined(with: .scale(scale: 0.95, anchor: .bottom))
@@ -202,6 +200,7 @@ struct PetRootView: View {
             } else if engine.brainThinking {
                 SpeechBubble(text: "...", thinking: true)
                     .padding(.horizontal, 8)
+                    .padding(.bottom, -42)
                     .transition(.opacity.animation(.easeInOut(duration: 0.15)))
             }
             content(t: t)
