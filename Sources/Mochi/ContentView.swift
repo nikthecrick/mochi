@@ -20,10 +20,11 @@ struct PixelSpriteView: View {
     let scale: CGFloat
     var tint: Color? = nil
     var overrides: [Character: Color] = [:]   // breed colors
+    var traits: PetTraits? = nil
 
     var body: some View {
         Canvas { ctx, size in
-            let g = Sprites.grid(frame)
+            let g = Sprites.grid(frame, traits: traits)
             let cell = size.width / CGFloat(SpriteGrid.size)
             for y in 0..<SpriteGrid.size {
                 for x in 0..<SpriteGrid.size {
@@ -165,6 +166,7 @@ struct PetRootView: View {
     var settle: () -> Void
     var popMenu: () -> Void
     var onPlay: () -> Void = {}
+    var onShop: () -> Void = {}
     var moveWindow: (Double, Double) -> Void          // wander: move the panel itself
 
     @State private var dropHot = false
@@ -175,24 +177,50 @@ struct PetRootView: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.1)) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
+            petWithBubble(t: t)
+        }
+    }
+
+    @ViewBuilder
+    private func petWithBubble(t: Double) -> some View {
+        VStack(spacing: 0) {
+            // Spacer at the TOP absorbs extra panel height so bubble+Mochi sit at the bottom.
+            // When the bubble is 170 pt and the panel is 440 pt, Spacer = 30 pt (above the bubble).
+            // When there is no bubble (during the 0.25 s shrink delay), Spacer = 200 pt — Mochi stays put.
+            Spacer(minLength: 0)
+            if let text = engine.speechBubble {
+                SpeechBubble(text: text)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, -42)
+                    .transition(
+                        .opacity
+                        .combined(with: .scale(scale: 0.95, anchor: .bottom))
+                        .animation(.easeInOut(duration: 0.15))
+                    )
+            } else if engine.brainThinking {
+                SpeechBubble(text: "...", thinking: true)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, -42)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.15)))
+            }
             content(t: t)
                 .frame(width: 280, height: 240)
                 .contentShape(Rectangle())
-                .onHover { engine.hover = $0 }     // whole-panel hover: controls stay
-                .background(PanelRightClickArea(onRightClick: popMenu))   // right-click anywhere
+                .onHover { engine.hover = $0 }
+                .background(PanelRightClickArea(onRightClick: popMenu))
                 .onChange(of: t) { nt in
-                    // drive the wander: the pet's window itself moves on screen
                     let dt = min(max(nt - lastT, 0), 1)
                     lastT = nt
                     guard dt > 0 else { return }
                     switch engine.stepWander(dt: dt) {
                     case .moving(let dx, let dy):
                         if dx != 0 || dy != 0 { moveWindow(dx, dy) }
-                    case .ended: settle()          // episode done: remember position
+                    case .ended: settle()
                     case .idle: break
                     }
                 }
         }
+        .frame(width: 280)
     }
 
     /// Sprite size grows with age (starts small, tops out after ~a day).
@@ -209,7 +237,19 @@ struct PetRootView: View {
             } else {
                 aura(mood: mood, t: t)
                     .allowsHitTesting(false)
+                // Magic rainbow aura (brain triggered)
+                if engine.magicAuraActive {
+                    magicAura(t: t)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
                 petView(mood: mood, frame: frame, t: t)
+                // Orbiting pixel dots while brain executes a tool call
+                if engine.brainActing {
+                    orbitRing(t: t)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
                 if engine.eatActive && mood != .egg && mood != .hatch {
                     PixelSpriteView(frame: .food, scale: 4)
                         .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
@@ -222,6 +262,13 @@ struct PetRootView: View {
                 if mood == .egg && eggDetail { eggDetailCard }
                 if mood != .egg && !engine.model.dead { needPods(t: t) }
                 if dropHot { feedMeHint }
+                // Cocoon wake animation (overlay on top of the pet)
+                if engine.cocoonWaking {
+                    CocoonOverlay(phase: engine.cocoonPhase, scale: scale)
+                        .zIndex(40)
+                        .transition(.opacity)
+                }
+                // Dream bubble is shown in its own floating panel (see AppDelegate.showDreamPanel)
                 let showControls = engine.controlsPinned
                     || (showMode == "ear" ? engine.earOpen : engine.hover)
                 if showControls {
@@ -243,26 +290,129 @@ struct PetRootView: View {
 
     private func petView(mood: Mood, frame: Frame, t: Double) -> some View {
         ZStack {
-            PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides)
+            PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                            traits: engine.model.traits)
                 .shadow(color: .black.opacity(0.3), radius: 4, y: 3)
             earGlow(frame: frame, t: t)
             // retro temp display, painted directly on the egg shell
             if mood == .egg || mood == .hatch { eggTempOverlay(frame: frame) }
+            // Hover preview — lighter tint while dragging over the pool before releasing.
+            // Covers only the bottom ~32% of the sprite so it feels like splashing your feet in.
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 0.47, green: 0.75, blue: 1.0).opacity(0), location: 0),
+                    .init(color: Color(red: 0.47, green: 0.75, blue: 1.0).opacity(0.20), location: 0.5),
+                    .init(color: Color(red: 0.30, green: 0.60, blue: 0.95).opacity(0.38), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(width: 16.0 * scale, height: 16.0 * scale * 0.35)
+            .frame(width: 16.0 * scale, height: 16.0 * scale, alignment: .bottom)
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                                  traits: engine.model.traits))
+            .opacity(engine.isHoveringPool && !engine.swimActive ? 1 : 0)
+            .animation(.easeInOut(duration: 0.25), value: engine.isHoveringPool)
+            .allowsHitTesting(false)
+            // Bed hover tint — warm golden gradient on bottom ~32% while dragging over bed.
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 1.0, green: 0.80, blue: 0.40).opacity(0), location: 0),
+                    .init(color: Color(red: 1.0, green: 0.70, blue: 0.25).opacity(0.20), location: 0.5),
+                    .init(color: Color(red: 0.92, green: 0.55, blue: 0.10).opacity(0.38), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(width: 16.0 * scale, height: 16.0 * scale * 0.35)
+            .frame(width: 16.0 * scale, height: 16.0 * scale, alignment: .bottom)
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                                  traits: engine.model.traits))
+            .opacity(engine.isHoveringBed && !engine.bedSleepActive ? 1 : 0)
+            .animation(.easeInOut(duration: 0.25), value: engine.isHoveringBed)
+            .allowsHitTesting(false)
+            // Sandbox hover tint — warm sandy yellow shimmer
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 0.98, green: 0.90, blue: 0.40).opacity(0.32), location: 0),
+                    .init(color: Color(red: 0.95, green: 0.82, blue: 0.30).opacity(0.18), location: 0.5),
+                    .init(color: Color(red: 0.95, green: 0.75, blue: 0.20).opacity(0),    location: 1),
+                ],
+                startPoint: .bottom, endPoint: .top
+            )
+            .frame(width: 16.0 * scale, height: 16.0 * scale * 0.40)
+            .frame(width: 16.0 * scale, height: 16.0 * scale, alignment: .bottom)
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                                  traits: engine.model.traits))
+            .opacity(engine.isHoveringSandbox && !engine.sandboxPlayActive ? 1 : 0)
+            .animation(.easeInOut(duration: 0.25), value: engine.isHoveringSandbox)
+            .allowsHitTesting(false)
+            // Warm cozy sleep glow — amber only on the head area, fades before the blanket.
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 0.95, green: 0.75, blue: 0.30).opacity(0.28), location: 0.0),
+                    .init(color: Color(red: 0.95, green: 0.70, blue: 0.25).opacity(0.18), location: 0.38),
+                    .init(color: Color(red: 0.95, green: 0.70, blue: 0.25).opacity(0),    location: 0.58),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(width: 16.0 * scale, height: 16.0 * scale)
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                                  traits: engine.model.traits))
+            .opacity(engine.bedSleepActive ? 1 : 0)
+            .animation(.easeInOut(duration: 0.5), value: engine.bedSleepActive)
+            .allowsHitTesting(false)
+            // Swim water overlay — sharp waterline at ~56% height; opaque deep-blue at bottom.
+            // New breaststroke sprite has full body pixels so the gradient masks correctly.
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 0.28, green: 0.65, blue: 0.95).opacity(0),    location: 0.50),
+                    .init(color: Color(red: 0.28, green: 0.65, blue: 0.95).opacity(0.42), location: 0.62),
+                    .init(color: Color(red: 0.12, green: 0.42, blue: 0.88).opacity(0.82), location: 1.00),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(width: 16.0 * scale, height: 16.0 * scale)
+            .mask(PixelSpriteView(frame: frame, scale: scale, overrides: engine.breedOverrides,
+                                  traits: engine.model.traits))
+            .opacity(engine.swimActive ? 1 : 0)
+            .animation(.easeInOut(duration: 0.5), value: engine.swimActive)
+            .allowsHitTesting(false)
+            // Submerge entry flash: Mochi plunges under on drop, rises back up (~0.9s).
+            submergeFlash(frame: frame, scale: scale, t: t)
+            // Deep-dive overlay: full blue fade-in/out during the dive window.
+            diveOverlay(frame: frame, scale: scale, t: t)
+            // Big Zzz overlay while sleeping in bed.
+            bedZzzOverlay(t: t)
+            // Away overlay while lent out to another machine.
+            awayOverlay(t: t)
         }
         .scaleEffect(x: stretchX(t: t), y: stretchY(t: t))
         .offset(x: wobbleX(mood: mood, t: t),
-                y: bobY(mood: mood, t: t) + jumpY(t: t))
+                y: bobY(mood: mood, t: t) + jumpY(t: t) + swimSinkY(t: t) + diveY(t: t))
         .overlay(
             DragArea(
                 onDrag: { dx, dy in
-                    engine.dragged = true          // dangling-leg wiggle while picked up
+                    engine.dragged = true
                     engine.walkUntil = nil
-                    dragDelta(dx, dy)
+                    engine.walkToBed = false; engine.walkToTree = false; engine.walkToSandbox = false
+                    if engine.swimActive { engine.swimUntil = Date() }  // drag off pool fades water out
+                    dragDelta(dx, dy)  // updates petPos → AppDelegate recomputes isHoveringPool/Bed/Tree/Sandbox
                 },
                 onRelease: { moved in
+                    let droppedOnPool    = engine.isHoveringPool
+                    let droppedOnBed     = engine.isHoveringBed
+                    let droppedOnSandbox = engine.isHoveringSandbox
                     engine.dragged = false
-                    if moved { settle() }
-                    else if mood == .egg { eggDetail.toggle() }   // click anywhere on the egg -> details
+                    engine.isHoveringPool = false
+                    engine.isHoveringBed = false
+                    engine.isHoveringTree = false
+                    engine.isHoveringSandbox = false
+                    if moved {
+                        settle()
+                        if droppedOnPool       { engine.startSwim() }
+                        else if droppedOnBed   { engine.startBedSleep() }
+                        else if droppedOnSandbox { engine.startSandboxPlay() }
+                    } else if engine.bedSleepActive { engine.tapDuringSleep() }
+                    else if mood == .egg { eggDetail.toggle() }
                     else { engine.pat(); engine.easterEggClick() }
                 },
                 onRightClick: { popMenu() },
@@ -289,6 +439,20 @@ struct PetRootView: View {
                 )
                 .frame(width: 30, height: 30)
                 .padding(.leading, 5.5 * scale - 15)   // tracks the left ear at any size
+                .padding(.top, 3 * scale - 15)
+            }
+        }
+        .overlay(alignment: .topTrailing) {         // right-ear hot spot: shop (unlocked with legs)
+            if engine.hasLegs && mood != .egg && mood != .dead {
+                EarClickArea(
+                    onDrag: { dx, dy in dragDelta(dx, dy) },
+                    onRelease: { moved in
+                        if moved { settle() } else { engine.markShopVisited(); onShop() }
+                    },
+                    onRightClick: { popMenu() }
+                )
+                .frame(width: 30, height: 30)
+                .padding(.trailing, 5.5 * scale - 15)
                 .padding(.top, 3 * scale - 15)
             }
         }
@@ -332,6 +496,7 @@ struct PetRootView: View {
     /// or the subtle first-time left-ear click hint. Masked to the left ear.
     @ViewBuilder
     private func earGlow(frame: Frame, t: Double) -> some View {
+        // Left ear: yellow glow on file feed or first-time hint
         if engine.glowActive || engine.earHint {
             let pulse = 0.3 + 0.25 * (0.5 + 0.5 * sin(t * 7))
             PixelSpriteView(frame: frame, scale: scale, tint: Pal.color("Y"))
@@ -340,6 +505,48 @@ struct PetRootView: View {
                 .mask(LeftEarGlowMask())
                 .allowsHitTesting(false)
         }
+        // Right ear: purple shop hint until brain is installed or shop opened once
+        if engine.hasLegs && !engine.model.brainInstalled && engine.model.shopOpened != true {
+            let pulse = 0.18 + 0.14 * (0.5 + 0.5 * sin(t * 4.5))
+            PixelSpriteView(frame: frame, scale: scale, tint: .purple)
+                .blur(radius: 2.5)
+                .opacity(pulse)
+                .mask(RightEarGlowMask())
+                .allowsHitTesting(false)
+        }
+    }
+
+    // MARK: brain magic visuals
+
+    // Three colored pixel squares orbiting Mochi while the brain is executing a tool call.
+    @ViewBuilder
+    private func orbitRing(t: Double) -> some View {
+        let r: CGFloat = 54
+        let colors: [Color] = [.purple, .cyan, Pal.color("Y")]
+        ForEach(0..<3, id: \.self) { i in
+            let angle = t * 2.5 + Double(i) * (2 * .pi / 3)
+            let x = r * CGFloat(cos(angle))
+            let y = r * CGFloat(sin(angle))
+            RoundedRectangle(cornerRadius: 1)
+                .fill(colors[i])
+                .frame(width: 5, height: 5)
+                .shadow(color: colors[i].opacity(0.9), radius: 5)
+                .offset(x: x, y: y)
+        }
+    }
+
+    // Cycling rainbow glow when the brain triggered a magic aura.
+    @ViewBuilder
+    private func magicAura(t: Double) -> some View {
+        let hue = t.truncatingRemainder(dividingBy: 2.5) / 2.5
+        let pulse = 0.35 + 0.12 * sin(t * 3.1)
+        let c = Color(hue: hue, saturation: 0.85, brightness: 1.0)
+        Circle()
+            .fill(RadialGradient(
+                colors: [c.opacity(pulse), c.opacity(0)],
+                center: .center, startRadius: 0, endRadius: 90))
+            .frame(width: 180, height: 180)
+            .blur(radius: 8)
     }
 
     // MARK: mood aura (stats you *feel*, not read)
@@ -484,9 +691,14 @@ struct PetRootView: View {
     private func heartsOverlay(t: Double) -> some View {
         ForEach(engine.particles) { p in
             let ageT = max(0, t - p.start.timeIntervalSinceReferenceDate)
-            PixelSpriteView(frame: p.frame, scale: 3)
+            let spread = p.burst ? CGFloat(1 + ageT * 1.1) : 1   // burst particles accelerate outward
+            let ox = CGFloat(p.dx) * spread
+            let oy = p.burst
+                ? CGFloat(p.dy) * spread - CGFloat(ageT) * 10    // arc outward + slight rise
+                : -6 - CGFloat(ageT) * 16                         // normal: drift up
+            PixelSpriteView(frame: p.frame, scale: p.scale)
                 .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
-                .offset(x: CGFloat(p.dx), y: -6 - CGFloat(ageT) * 16)
+                .offset(x: ox, y: oy)
                 .opacity(Double(1 - ageT / 1.4))
                 .allowsHitTesting(false)
         }
@@ -532,6 +744,14 @@ struct PetRootView: View {
         // Rarely: a happy little hop (legs splayed mid-air)
         if engine.jumpActive && mood != .dead && mood != .egg && mood != .hatch {
             return fast ? .dangleA : .dangleB
+        }
+        // Lent out: Mochi is visiting another machine — show dormant sleep pose
+        if engine.model.lentOut == true && mood != .dead && mood != .egg && mood != .hatch {
+            return p == 0 ? .sleepA : .sleepB
+        }
+        // Sleeping in the cozy bed: Mochi face peeking above blanket
+        if engine.bedSleepActive && mood != .dead && mood != .egg && mood != .hatch {
+            return p == 0 ? .bedSleepA : .bedSleepB
         }
         // Swimming in the pool: head above water, ripples
         if engine.swimActive && mood != .dead && mood != .egg && mood != .hatch {
@@ -653,6 +873,19 @@ struct PetRootView: View {
     }
 
     private func bobY(mood: Mood, t: Double) -> CGFloat {
+        if engine.bedSleepActive || engine.model.lentOut == true { return 0 }
+        if engine.swimActive {
+            // Suppress bob during entry and during dive (diveY handles offset then).
+            if engine.swimDiving,
+               let ds = engine.diveStartedAt, let de = engine.diveEndAt,
+               t >= ds.timeIntervalSinceReferenceDate && t < de.timeIntervalSinceReferenceDate {
+                return 0
+            }
+            guard let start = engine.swimStartedAt else { return 2.5 * CGFloat(sin(t * 2.2)) }
+            let elapsed = max(0, t - start.timeIntervalSinceReferenceDate)
+            if elapsed < 0.9 { return 0 }  // entry phase handles offset via swimSinkY
+            return 2.5 * CGFloat(sin(t * 2.2))
+        }
         if engine.isWalking || engine.growActive {   // trotty bounce
             return Int(t * 6) % 2 == 0 ? -1 : 0
         }
@@ -660,6 +893,117 @@ struct PetRootView: View {
         if mood == .happy { return 0 }             // still happy face
         if mood == .asleep { return 1 }
         return step == 0 ? -2 : 0
+    }
+
+    /// Sink-then-rise offset on pool entry (0→+14→0 px over 0.9 s).
+    private func swimSinkY(t: Double) -> CGFloat {
+        guard engine.swimActive, let start = engine.swimStartedAt else { return 0 }
+        let elapsed = max(0, t - start.timeIntervalSinceReferenceDate)
+        if elapsed >= 0.9 { return 0 }
+        if elapsed < 0.3 { return CGFloat(elapsed / 0.3 * 14) }
+        if elapsed < 0.6 { return 14 }
+        return CGFloat((1.0 - (elapsed - 0.6) / 0.3) * 14)
+    }
+
+    /// Deep-dive offset: Mochi sinks 32 px over 0.8 s, holds, then rises over 1.0 s.
+    private func diveY(t: Double) -> CGFloat {
+        guard engine.swimDiving,
+              let ds = engine.diveStartedAt,
+              let de = engine.diveEndAt else { return 0 }
+        let dst = ds.timeIntervalSinceReferenceDate
+        let det = de.timeIntervalSinceReferenceDate
+        let sinkDur = 0.8, riseDur = 1.0, depth: CGFloat = 32
+        if t < dst { return 0 }
+        let sinceDown = t - dst
+        if sinceDown < sinkDur { return CGFloat(sinceDown / sinkDur) * depth }
+        if t < det - riseDur { return depth }
+        if t < det { return CGFloat((det - t) / riseDur) * depth }
+        return 0
+    }
+
+    /// Full-body blue overlay that fades in as Mochi dives and out as they surface.
+    @ViewBuilder
+    private func diveOverlay(frame: Frame, scale: CGFloat, t: Double) -> some View {
+        if engine.swimDiving,
+           let ds = engine.diveStartedAt,
+           let de = engine.diveEndAt {
+            let dst = ds.timeIntervalSinceReferenceDate
+            let det = de.timeIntervalSinceReferenceDate
+            let sinkDur = 0.8, riseDur = 1.0
+            let opacity: Double = {
+                if t < dst { return 0 }
+                let sinceDown = t - dst
+                if sinceDown < sinkDur { return sinceDown / sinkDur }
+                if t < det - riseDur { return 1.0 }
+                if t < det { return (det - t) / riseDur }
+                return 0
+            }()
+            if opacity > 0 {
+                Rectangle()
+                    .fill(Color(red: 0.12, green: 0.42, blue: 0.88).opacity(0.90 * opacity))
+                    .frame(width: 16.0 * scale, height: 16.0 * scale)
+                    .mask(PixelSpriteView(frame: frame, scale: scale,
+                                         overrides: engine.breedOverrides,
+                                         traits: engine.model.traits))
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// Full-body blue flash that fades as Mochi surfaces (~0.9 s after entry).
+    @ViewBuilder
+    private func submergeFlash(frame: Frame, scale: CGFloat, t: Double) -> some View {
+        if engine.swimActive, let start = engine.swimStartedAt {
+            let elapsed = max(0, t - start.timeIntervalSinceReferenceDate)
+            let opacity: Double = {
+                if elapsed >= 0.9 { return 0 }
+                if elapsed < 0.2 { return elapsed / 0.2 }
+                if elapsed < 0.5 { return 1.0 }
+                return 1.0 - (elapsed - 0.5) / 0.4
+            }()
+            if opacity > 0 {
+                Rectangle()
+                    .fill(Color(red: 0.12, green: 0.42, blue: 0.88).opacity(0.78 * opacity))
+                    .frame(width: 16.0 * scale, height: 16.0 * scale)
+                    .mask(PixelSpriteView(frame: frame, scale: scale,
+                                         overrides: engine.breedOverrides,
+                                         traits: engine.model.traits))
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    /// Big floating Zzz while Mochi sleeps in the bed.
+    @ViewBuilder
+    private func bedZzzOverlay(t: Double) -> some View {
+        if engine.bedSleepActive {
+            let zz: [(String, Double, CGFloat, CGFloat)] = [
+                ("Z", 0.0,  10, 0),
+                ("Z", 1.0,  14, -16),
+                ("Z", 2.0,  18, -34),
+            ]
+            ForEach(Array(zz.enumerated()), id: \.offset) { _, z in
+                let bob = CGFloat(sin(t * 1.1 + z.1) * 3.5)
+                Text(z.0)
+                    .font(PixelFont.font(z.2))
+                    .foregroundColor(Color(red: 0.68, green: 0.50, blue: 1.0))
+                    .shadow(color: Color(red: 0.45, green: 0.25, blue: 0.90).opacity(0.70), radius: 4, y: 2)
+                    .offset(x: 28 + z.3 * 0.5, y: -38 + z.3 + bob)
+            }
+        }
+    }
+
+    /// Floating travel indicator while Mochi is lent out to another machine.
+    @ViewBuilder
+    private func awayOverlay(t: Double) -> some View {
+        if engine.model.lentOut == true {
+            let bob = CGFloat(sin(t * 1.0) * 2.5)
+            Text("✈︎")
+                .font(.system(size: 14))
+                .foregroundColor(Color(red: 0.55, green: 0.80, blue: 1.0))
+                .shadow(color: Color(red: 0.30, green: 0.55, blue: 0.90).opacity(0.60), radius: 4, y: 2)
+                .offset(x: 24, y: -32 + bob)
+        }
     }
 
     private func wobbleX(mood: Mood, t: Double) -> CGFloat {
@@ -681,6 +1025,264 @@ private struct LeftEarGlowMask: Shape {
         p.addLine(to: CGPoint(x: rx + rw, y: ry + rh))
         p.addLine(to: CGPoint(x: rx, y: ry + rh))
         p.closeSubpath()
+        return p
+    }
+}
+
+/// Mask shape: the right-ear glow region (right ~35% width, top ~35% height).
+private struct RightEarGlowMask: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        var p = Path()
+        let rx = rect.minX + w * 0.45, ry = rect.minY, rw = w * 0.35, rh = h * 0.35
+        p.move(to: CGPoint(x: rx, y: ry))
+        p.addLine(to: CGPoint(x: rx + rw, y: ry))
+        p.addLine(to: CGPoint(x: rx + rw, y: ry + rh))
+        p.addLine(to: CGPoint(x: rx, y: ry + rh))
+        p.closeSubpath()
+        return p
+    }
+}
+
+// MARK: - Dream bubble (shown above Mochi while sleeping)
+
+struct DreamBubble: View {
+    let image: NSImage?
+    @State private var pulse = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.6, green: 0.4, blue: 1.0).opacity(0.35),
+                                Color(red: 0.3, green: 0.5, blue: 1.0).opacity(0.25),
+                            ],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                    )
+                    .blur(radius: 6)
+                    .padding(-4)
+
+                if let img = image {
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 130, height: 130)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.55, green: 0.3, blue: 1.0).opacity(0.9),
+                                            Color(red: 0.25, green: 0.45, blue: 1.0).opacity(0.8),
+                                        ],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 16
+                                )
+                        )
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.8), value: image)
+                } else {
+                    // Loading placeholder — softly pulsing stars
+                    Text("✦ ✦ ✦")
+                        .font(.system(size: 18))
+                        .foregroundColor(.white.opacity(pulse ? 0.7 : 0.25))
+                        .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: pulse)
+                        .onAppear { pulse = true }
+                }
+            }
+            .frame(width: 130, height: 130)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.45), lineWidth: 1.2)
+            )
+            .shadow(color: Color(red: 0.5, green: 0.3, blue: 1.0).opacity(0.5), radius: 12, y: 4)
+
+            Text("z z z")
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundColor(.white.opacity(0.7))
+                .padding(.top, 4)
+        }
+    }
+}
+
+// MARK: - Speech bubble (brain output)
+
+struct SpeechBubble: View {
+    let text: String
+    var thinking = false
+    @AppStorage(BrainKeys.bubbleFontSize) private var fontSize: Double = 14
+
+    var body: some View {
+        VStack(spacing: 0) {
+            bubbleBody
+            bubbleTail
+        }
+        .frame(maxWidth: 220)
+        .allowsHitTesting(false)
+    }
+
+    private var bubbleBody: some View {
+        Group {
+            if thinking {
+                thinkingDots
+            } else {
+                Text(text)
+                    .font(PixelFont.font(fontSize))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .shadow(color: .black.opacity(0.55), radius: 1, y: 1)
+            }
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 11)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(Color(red: 0.58, green: 0.42, blue: 1.0).opacity(0.14))
+                )
+        )
+        .overlay(
+            // Outer stroke
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.white.opacity(0.35), lineWidth: 1.2)
+        )
+        .overlay(
+            // Inner highlight — the "liquid glass" top-edge shine
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.45), Color.white.opacity(0.0)],
+                        startPoint: .top, endPoint: .center
+                    ),
+                    lineWidth: 1
+                )
+                .padding(1)
+        )
+        .shadow(color: Color(red: 0.5, green: 0.3, blue: 1.0).opacity(0.28), radius: 14, y: 5)
+        .shadow(color: .black.opacity(0.32), radius: 5, y: 3)
+    }
+
+    // Three square pixel dots that chase each other — fits the retro sprite aesthetic.
+    private var thinkingDots: some View {
+        TimelineView(.animation(minimumInterval: 0.35)) { tl in
+            let phase = Int(tl.date.timeIntervalSinceReferenceDate / 0.35) % 3
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(Color.white.opacity(phase == i ? 0.95 : 0.22))
+                        .frame(width: 5, height: 5)
+                }
+            }
+            .padding(.vertical, 3)
+        }
+    }
+
+    // Pixel-stepped tail — three rows, each narrower, like a Mochi sprite pixel.
+    private var bubbleTail: some View {
+        BubbleTail()
+            .fill(Color.white.opacity(0.22))
+            .frame(width: 18, height: 11)
+    }
+}
+
+private struct BubbleTail: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width, h = rect.height
+        let col = w / 3   // one pixel-column width
+        var p = Path()
+        // Row 1 — full width
+        p.addRect(CGRect(x: 0,     y: 0,       width: w,     height: h / 3))
+        // Row 2 — one column narrower on each side
+        p.addRect(CGRect(x: col,   y: h / 3,   width: col,   height: h / 3))
+        // Row 3 — single centre column
+        p.addRect(CGRect(x: col,   y: 2 * h/3, width: col,   height: h / 3))
+        return p
+    }
+}
+
+// MARK: - Cocoon wake animation
+
+/// Drawn over the pet sprite while waking from a cocooned quit.
+/// phase 0 = still cocooned, phase 1 = fully awake.
+struct CocoonOverlay: View {
+    let phase: Double
+    let scale: CGFloat
+
+    private var shellOpacity: Double {
+        phase < 0.65 ? 1.0 : max(0, 1.0 - (phase - 0.65) / 0.35)
+    }
+    private var crackOpacity: Double {
+        phase > 0.35 ? min(1.0, (phase - 0.35) / 0.3) : 0.0
+    }
+    private var glowRadius: CGFloat {
+        phase > 0.65 ? CGFloat((phase - 0.65) / 0.35) * 18 : 4
+    }
+
+    var body: some View {
+        let w = scale * 19
+        let h = scale * 21
+        ZStack {
+            // Warm silk cocoon shell
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color(red: 0.98, green: 0.93, blue: 0.76).opacity(0.80),
+                            Color(red: 0.85, green: 0.74, blue: 0.52).opacity(0.55),
+                        ],
+                        center: .center, startRadius: 0, endRadius: max(w, h) / 2
+                    )
+                )
+                .overlay(
+                    Ellipse().stroke(Color.white.opacity(0.55), lineWidth: 1.5)
+                )
+                .blur(radius: phase > 0.6 ? CGFloat((phase - 0.6) / 0.4) * 12 : 0)
+                .opacity(shellOpacity)
+
+            // Crack lines appear in phase 0.35+
+            if crackOpacity > 0 {
+                CocoonCracks()
+                    .stroke(Color.white.opacity(0.75), lineWidth: 1.2)
+                    .opacity(crackOpacity)
+            }
+
+            // Warm outer glow (intensifies as shell dissolves)
+            Ellipse()
+                .fill(Color(red: 1.0, green: 0.88, blue: 0.5).opacity(0.18 * shellOpacity))
+                .blur(radius: glowRadius)
+        }
+        .frame(width: w, height: h)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct CocoonCracks: Shape {
+    func path(in rect: CGRect) -> Path {
+        let cx = rect.midX, cy = rect.midY
+        var p = Path()
+        // A few jagged cracks radiating from the centre-top
+        p.move(to: CGPoint(x: cx,      y: cy - 8))
+        p.addLine(to: CGPoint(x: cx - 14, y: cy - 32))
+        p.addLine(to: CGPoint(x: cx - 8,  y: cy - 42))
+
+        p.move(to: CGPoint(x: cx,      y: cy - 8))
+        p.addLine(to: CGPoint(x: cx + 18, y: cy - 28))
+        p.addLine(to: CGPoint(x: cx + 10, y: cy - 44))
+
+        p.move(to: CGPoint(x: cx,      y: cy + 2))
+        p.addLine(to: CGPoint(x: cx - 22, y: cy + 8))
+
+        p.move(to: CGPoint(x: cx,      y: cy + 2))
+        p.addLine(to: CGPoint(x: cx + 16, y: cy + 14))
         return p
     }
 }
@@ -753,7 +1355,7 @@ struct IconButtonStyle: ButtonStyle {
 }
 
 
-// MARK: - Pool (gadget stage: a little pixel pond you can park anywhere)
+// MARK: - Pool (gadget stage: 3D front-view pixel pond you can park anywhere)
 
 struct PoolRootView: View {
     @ObservedObject var engine: PetEngine
@@ -761,16 +1363,24 @@ struct PoolRootView: View {
     var settle: () -> Void
     var popMenu: () -> Void
 
+    // Pool sprite at scale 10 = 160×160; 5 pt padding each side → 170×170 panel
+    private let spriteScale: CGFloat = 10
+    private let pad: CGFloat = 5
+
+    private var panelSize: CGFloat { 16 * spriteScale + 2 * pad }
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.4)) { tl in
+        TimelineView(.animation(minimumInterval: 0.08)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
             ZStack {
-                PixelSpriteView(frame: .pool, scale: 6)
-                    .shadow(color: .black.opacity(0.25), radius: 4, y: 3)
-                    .opacity(engine.swimActive ? 1.0 : 0.95)
-                    .scaleEffect(Int(tl.date.timeIntervalSinceReferenceDate * 2) % 2 == 0 && engine.swimActive ? 1.03 : 1)
+                PixelSpriteView(frame: .pool, scale: spriteScale)
+                    .padding(pad)
+                waterShimmer(t: t)
+                if engine.poolSplashActive { splashRings(t: t) }
             }
-            .frame(width: 110, height: 110)
+            .frame(width: panelSize, height: panelSize)
             .contentShape(Rectangle())
+            .shadow(color: Color(red: 0.55, green: 0.30, blue: 0.10).opacity(0.45), radius: 12, y: 6)
             .overlay(
                 DragArea(
                     onDrag: { dx, dy in dragDelta(dx, dy) },
@@ -779,6 +1389,300 @@ struct PoolRootView: View {
                 )
             )
         }
+    }
+
+    // Subtle animated glints on the dark water surface
+    @ViewBuilder
+    private func waterShimmer(t: Double) -> some View {
+        let glints: [(x: CGFloat, y: CGFloat, freq: Double, phase: Double)] = [
+            (55, 60, 2.3, 0.0), (90, 68, 1.7, 1.1), (118, 58, 2.8, 2.3),
+            (68, 90, 2.1, 0.7), (108, 97, 1.9, 1.8), (82, 112, 2.5, 3.2),
+        ]
+        ForEach(Array(glints.enumerated()), id: \.offset) { _, g in
+            Ellipse()
+                .fill(Color.white.opacity(0.07 + 0.08 * sin(t * g.freq + g.phase)))
+                .frame(width: 14, height: 5)
+                .position(x: g.x + pad, y: g.y + pad)
+        }
+        .frame(width: panelSize, height: panelSize)
+    }
+
+    // Circular splash rings (top-down view — real circles, not squished ellipses)
+    @ViewBuilder
+    private func splashRings(t: Double) -> some View {
+        let p1 = t.truncatingRemainder(dividingBy: 0.5) / 0.5
+        let p2 = (t + 0.25).truncatingRemainder(dividingBy: 0.5) / 0.5
+        let cx = panelSize / 2, cy = panelSize / 2
+        ZStack {
+            Circle()
+                .stroke(Color(red: 0.45, green: 0.70, blue: 0.98).opacity(0.80 * (1 - p1)),
+                        lineWidth: 2.0)
+                .frame(width: 18 + 65 * p1, height: 18 + 65 * p1)
+            Circle()
+                .stroke(Color.white.opacity(0.60 * (1 - p2)), lineWidth: 1.5)
+                .frame(width: 12 + 44 * p2, height: 12 + 44 * p2)
+        }
+        .position(x: cx, y: cy)
+        .frame(width: panelSize, height: panelSize)
+    }
+}
+
+// MARK: - Cozy Bed (gadget stage: retro Mochi pixel bed, draggable panel)
+
+struct BedRootView: View {
+    @ObservedObject var engine: PetEngine
+    var dragDelta: (CGFloat, CGFloat) -> Void
+    var settle: () -> Void
+    var popMenu: () -> Void
+
+    private let spriteScale: CGFloat = 10
+    private let pad: CGFloat = 5
+    private var panelSize: CGFloat { 16 * spriteScale + 2 * pad }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.1)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
+            ZStack {
+                PixelSpriteView(frame: .bed, scale: spriteScale)
+                    .padding(pad)
+                if engine.bedSleepActive { cozyCandleFlicker(t: t) }
+            }
+            .frame(width: panelSize, height: panelSize)
+            .contentShape(Rectangle())
+            .shadow(color: Color(red: 0.55, green: 0.30, blue: 0.10).opacity(0.45), radius: 12, y: 6)
+            .overlay(
+                DragArea(
+                    onDrag: { dx, dy in dragDelta(dx, dy) },
+                    onRelease: { moved in if moved { settle() } },
+                    onRightClick: { popMenu() }
+                )
+            )
+        }
+    }
+
+    // Warm amber candlelight shimmer while Mochi sleeps
+    @ViewBuilder
+    private func cozyCandleFlicker(t: Double) -> some View {
+        let glints: [(x: CGFloat, y: CGFloat, freq: Double, phase: Double)] = [
+            (45, 70, 1.8, 0.0), (85, 62, 2.3, 0.9), (115, 75, 1.5, 2.1),
+            (60, 100, 2.0, 1.4), (100, 108, 1.7, 3.0),
+        ]
+        ForEach(Array(glints.enumerated()), id: \.offset) { _, g in
+            Ellipse()
+                .fill(Color(red: 1.0, green: 0.70, blue: 0.30)
+                    .opacity(0.06 + 0.07 * sin(t * g.freq + g.phase)))
+                .frame(width: 20, height: 8)
+                .position(x: g.x + pad, y: g.y + pad)
+        }
+        .frame(width: panelSize, height: panelSize)
+    }
+}
+
+// MARK: - Snack Tree (gadget stage: retro Mochi pixel tree, draggable panel)
+
+struct TreeRootView: View {
+    @ObservedObject var engine: PetEngine
+    var dragDelta: (CGFloat, CGFloat) -> Void
+    var settle: () -> Void
+    var popMenu: () -> Void
+
+    private let spriteScale: CGFloat = 10
+    private let pad: CGFloat = 5
+    private var panelSize: CGFloat { 16 * spriteScale + 2 * pad }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.08)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
+            ZStack {
+                PixelSpriteView(frame: .tree, scale: spriteScale)
+                    .padding(pad)
+                if engine.treeSnackActive { snackRain(t: t) }
+            }
+            .frame(width: panelSize, height: panelSize)
+            .contentShape(Rectangle())
+            .shadow(color: Color(red: 0.15, green: 0.45, blue: 0.15).opacity(0.40), radius: 12, y: 6)
+            .overlay(
+                DragArea(
+                    onDrag: { dx, dy in dragDelta(dx, dy) },
+                    onRelease: { moved in if moved { settle() } },
+                    onRightClick: { popMenu() }
+                )
+            )
+        }
+    }
+
+    // Apples falling from the tree while Mochi snacks
+    @ViewBuilder
+    private func snackRain(t: Double) -> some View {
+        let drops: [(startX: CGFloat, delay: Double, speed: Double)] = [
+            (55,  0.0, 1.8), (95,  0.6, 2.2), (120, 1.1, 1.5),
+            (70,  1.8, 2.0), (108, 2.4, 1.7),
+        ]
+        ForEach(Array(drops.enumerated()), id: \.offset) { _, d in
+            let cycle = (t + d.delay).truncatingRemainder(dividingBy: d.speed) / d.speed
+            let yPos = pad + 20 + cycle * (panelSize - 40)
+            let opacity = cycle < 0.1 ? cycle / 0.1 : (cycle > 0.85 ? (1 - cycle) / 0.15 : 1.0)
+            PixelSpriteView(frame: .snackFall, scale: 2.0)
+                .position(x: d.startX + pad, y: yPos)
+                .opacity(opacity * 0.90)
+        }
+        .frame(width: panelSize, height: panelSize)
+    }
+}
+
+// MARK: - Sandbox (gadget: sand pit with MultipeerConnectivity guest Mochis)
+
+struct SandboxRootView: View {
+    @ObservedObject var engine: PetEngine
+    var dragDelta: (CGFloat, CGFloat) -> Void
+    var settle: () -> Void
+    var popMenu: () -> Void
+
+    private let spriteScale: CGFloat = 10
+    private let pad: CGFloat = 5
+    private var spriteSize: CGFloat { 16 * spriteScale }
+    private var panelW: CGFloat { 190 }
+    private var panelH: CGFloat { 220 }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.08)) { tl in
+            let t = tl.date.timeIntervalSinceReferenceDate
+            ZStack(alignment: .top) {
+                // Peer discovery area at top
+                peersArea(t: t)
+                    .frame(width: panelW, height: 50)
+
+                // Sandbox sprite + guest Mochis
+                ZStack {
+                    PixelSpriteView(frame: .sandbox, scale: spriteScale)
+                        .padding(pad)
+                    guestMochis(t: t)
+                    if engine.sandboxGuests.isEmpty && (engine.sandboxSession?.nearbyPeers.isEmpty ?? true) {
+                        lookingPulse(t: t)
+                    }
+                }
+                .frame(width: spriteSize + 2 * pad, height: spriteSize + 2 * pad)
+                .offset(y: 50)
+            }
+            .frame(width: panelW, height: panelH)
+            .contentShape(Rectangle())
+            .shadow(color: Color(red: 0.60, green: 0.45, blue: 0.15).opacity(0.40), radius: 12, y: 6)
+            .overlay(
+                DragArea(
+                    onDrag: { dx, dy in dragDelta(dx, dy) },
+                    onRelease: { moved in if moved { settle() } },
+                    onRightClick: { popMenu() }
+                )
+            )
+        }
+    }
+
+    // Nearby peer icons — tap to share your Mochi with that peer
+    @ViewBuilder
+    private func peersArea(t: Double) -> some View {
+        if let session = engine.sandboxSession, !session.nearbyPeers.isEmpty {
+            HStack(spacing: 10) {
+                ForEach(session.nearbyPeers, id: \.displayName) { peer in
+                    Button(action: { session.sendMochi(to: peer) }) {
+                        VStack(spacing: 3) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(red: 0.55, green: 0.82, blue: 0.60))
+                                    .frame(width: 26, height: 26)
+                                Text(String(peer.displayName
+                                    .replacingOccurrences(of: "Mochi-", with: "")
+                                    .prefix(1)).uppercased())
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            Text(peer.displayName.replacingOccurrences(of: "Mochi-", with: ""))
+                                .font(.system(size: 7))
+                                .foregroundColor(Color(white: 0.85))
+                                .lineLimit(1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help("Send your Mochi to \(peer.displayName.replacingOccurrences(of: "Mochi-", with: ""))")
+                }
+            }
+            .padding(.top, 8)
+            .frame(width: panelW, alignment: .center)
+        } else {
+            let alpha = 0.30 + 0.20 * sin(t * 1.4)
+            let label: String = {
+                if engine.model.lentOut == true { return "\(engine.model.name) is away visiting a friend" }
+                if !engine.sandboxGuests.isEmpty { return "\(engine.sandboxGuests.count) guest\(engine.sandboxGuests.count == 1 ? "" : "s") playing" }
+                return "looking for friends..."
+            }()
+            Text(label)
+                .font(.system(size: 8))
+                .foregroundColor(Color(white: 0.70).opacity(alpha))
+                .padding(.top, 16)
+                .frame(width: panelW, alignment: .center)
+        }
+    }
+
+    // Guest Mochi sprites rendered inside the sandbox
+    @ViewBuilder
+    private func guestMochis(t: Double) -> some View {
+        let sandSize = spriteSize + 2 * pad
+        ForEach(Array(engine.sandboxGuests.enumerated()), id: \.offset) { i, guest in
+            let overrides = breedOverrides(for: guest)
+            let bob = CGFloat(2.0 * sin(t * 1.8 + Double(i) * 2.1))
+            let xFrac: CGFloat = i % 2 == 0 ? 0.32 : 0.68
+            let isTransferred = engine.sandboxSession?.transferOrigins[guest.breedName ?? ""] != nil
+            VStack(spacing: 2) {
+                PixelSpriteView(frame: .idleA, scale: 3.0, overrides: overrides, traits: guest.traits)
+                    .offset(y: bob)
+                if isTransferred {
+                    Button(action: {
+                        if let name = guest.breedName,
+                           let peer = engine.sandboxSession?.transferOrigins[name] {
+                            engine.sandboxSession?.returnMochi(guest, to: peer)
+                        }
+                    }) {
+                        Text("Return")
+                            .font(.system(size: 7, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Capsule().fill(Color(red: 0.55, green: 0.82, blue: 0.60)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .position(x: sandSize * xFrac, y: sandSize * 0.62)
+        }
+        .frame(width: spriteSize + 2 * pad, height: spriteSize + 2 * pad)
+    }
+
+    // Subtle pulse when idle
+    @ViewBuilder
+    private func lookingPulse(t: Double) -> some View {
+        let alpha = 0.08 + 0.06 * sin(t * 0.9)
+        Circle()
+            .fill(Color(red: 0.95, green: 0.85, blue: 0.50).opacity(alpha))
+            .frame(width: 60, height: 60)
+            .position(x: (spriteSize + 2 * pad) / 2,
+                      y: (spriteSize + 2 * pad) * 0.65)
+            .frame(width: spriteSize + 2 * pad, height: spriteSize + 2 * pad)
+    }
+
+    private func breedOverrides(for model: PetModel) -> [Character: Color] {
+        guard let name = model.breedName,
+              let breed = Breed.all.first(where: { $0.name == name }) else { return [:] }
+        var o: [Character: Color] = [
+            "B": Color(red: breed.body.0,  green: breed.body.1,  blue: breed.body.2),
+            "S": Color(red: breed.shade.0, green: breed.shade.1, blue: breed.shade.2),
+            "P": Color(red: breed.blush.0, green: breed.blush.1, blue: breed.blush.2),
+            "U": Color(red: breed.body.0,  green: breed.body.1,  blue: breed.body.2),
+        ]
+        switch model.traits?.earInner {
+        case "brown": o["U"] = Color(red: 0.68, green: 0.44, blue: 0.26)
+        case "sky":   o["U"] = Color(red: 0.55, green: 0.80, blue: 0.98)
+        case "blush": o["U"] = Color(red: 1.00, green: 0.72, blue: 0.80)
+        default: break
+        }
+        return o
     }
 }
 

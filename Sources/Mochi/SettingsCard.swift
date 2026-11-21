@@ -6,12 +6,9 @@ import AppKit
 /// Retro (pixel headers) x modern (glass, pills, switches).
 struct SettingsCard: View {
     @ObservedObject var engine: PetEngine
+    @ObservedObject var brain: BrainEngine
     @ObservedObject var sound: SoundBank
     var onClose: () -> Void
-    var onFeedFile: () -> Void
-    var onCleanToilet: () -> Void
-    var onGivePool: () -> Void
-    var onRemovePool: () -> Void
     var onLend: (() -> Void)? = nil
     var onBorrow: (() -> Void)? = nil
     var onPlay: () -> Void = {}
@@ -20,72 +17,81 @@ struct SettingsCard: View {
     @AppStorage(PetRates.walkChanceDefaultsKey) private var walkChance: Double = PetRates.defaultWalkChance
     @AppStorage("Mochi.showMode") private var showMode = "ear"   // hover | ear
 
-    private let w: CGFloat = 248
+    // Brain config (read by BrainEngine at think-time via the same UserDefaults keys)
+    @AppStorage(BrainKeys.apiKey)         private var brainApiKey    = ""
+    @AppStorage(BrainKeys.endpoint)       private var brainEndpoint  = ""
+    @AppStorage(BrainKeys.modelID)        private var brainModel     = ""
+    @AppStorage(BrainKeys.intervalMin)    private var brainInterval  = BrainEngine.defaultInterval
+    @AppStorage(BrainKeys.bubbleFontSize) private var bubbleFontSize = 14.0
+    @State private var showKey = false
+
+    private let w: CGFloat = 230
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
 
-            section("CARE") {
-                row("carrot.fill", "Feed a snack", color: .orange) { engine.feed() }
-                row("gamecontroller.fill", "Play", color: .pink) { onPlay() }
-                row("zzz", engine.model.asleep ? "Wake up" : "Sleep", color: .indigo) { engine.toggleSleep() }
-            }
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 10) {
+                    section("CARE") {
+                        row("carrot.fill", "Feed a snack", color: .orange) { engine.feed() }
+                        row("gamecontroller.fill", "Play", color: .pink) { onPlay() }
+                        row("zzz", engine.model.asleep ? "Wake up" : "Sleep", color: .indigo) { engine.toggleSleep() }
+                    }
 
-            section("CONTROLS APPEAR") {
-                pillStrings([("On hover", "hover"), ("On left ear", "ear")], $showMode)
-                if showMode == "ear" {
-                    Text("click the pet's left ear to show / hide the controls")
-                        .font(.system(size: 8))
-                        .foregroundColor(.white.opacity(0.5))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
+                    section("CONTROLS APPEAR") {
+                        pillStrings([("On hover", "hover"), ("On left ear", "ear")], $showMode)
+                        if showMode == "ear" {
+                            Text("click the pet's left ear to show / hide the controls")
+                                .font(.system(size: 8))
+                                .foregroundColor(.white.opacity(0.5))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
 
-            section("SOUND & CONTROLS") {
-                switcher("Music on", isOn: Binding<Bool>(
-                    get: { sound.musicOn },
-                    set: { sound.musicOn = $0 }))
-                switcher("Sound effects on", isOn: Binding<Bool>(
-                    get: { !sound.muted },
-                    set: { sound.muted = !$0 }))
-            }
+                    section("SOUND & CONTROLS") {
+                        switcher("Music on", isOn: Binding<Bool>(
+                            get: { sound.musicOn },
+                            set: { sound.musicOn = $0 }))
+                        switcher("Sound effects on", isOn: Binding<Bool>(
+                            get: { !sound.muted },
+                            set: { sound.muted = !$0 }))
+                    }
 
-            section("POOP TIMING") {
-                pills([("Soon", 60), ("Normal", 300), ("Seldom", 900), ("Never", 0)], $digest)
-            }
+                    section("POOP TIMING") {
+                        pills([("Soon", 60), ("Normal", 300), ("Seldom", 900), ("Never", 0)], $digest)
+                    }
 
-            section("WANDERING") {
-                pills([("Often", 0.03), ("Normal", PetRates.defaultWalkChance),
-                       ("Seldom", 0.000283), ("Never", 0)], $walkChance)
-            }
+                    section("WANDERING") {
+                        pills([("Often", 0.03), ("Normal", PetRates.defaultWalkChance),
+                               ("Seldom", 0.000283), ("Never", 0)], $walkChance)
+                    }
 
-            section("FILES") {
-                row("doc.on.doc.fill", "Feed with a file…", color: .teal) { onFeedFile() }
-                row("trash.fill", "Clean toilet (empty Trash)…", color: .gray) { onCleanToilet() }
-                poolRow
-            }
+                    if engine.model.brainInstalled { brainSection }
 
-            section("PET") {
-                row("pencil", "Rename…", color: .gray) { Dialogs.rename(engine) }
-                row("sparkles", "New pet…", color: .pink) { Dialogs.newPet(engine) }
-                row("power", "Quit Mochi", color: .red) { NSApp.terminate(nil) }
-            }
+                    section("PET") {
+                        row("pencil", "Rename…", color: .gray) { Dialogs.rename(engine) }
+                        row("sparkles", "New pet…", color: .pink) { Dialogs.newPet(engine) }
+                        row("power", "Quit Mochi", color: .red) { NSApp.terminate(nil) }
+                    }
 
-            if engine.devMode {
-                section("DEV — PREPARED") {
-                    row("arrow.up.arrow.down", "Lend pet to a friend…", color: .purple) { onLend?() }
-                    row("arrow.down.arrow.up", "Borrow a pet…", color: .purple) { onBorrow?() }
-                    row("clock.arrow.circlepath", "Time skip +1h", color: .gray) { engine.timeSkip(3600) }
-                    row("clock.badge.xmark", "Time skip +6h", color: .gray) { engine.timeSkip(6 * 3600) }
-                    row("flame", "Starve to death (test)", color: .red) {
-                        engine.model.hunger = 0
-                        engine.model.happiness = 0
-                        engine.model.everHatched = true
-                        engine.timeSkip(3 * 3600)
+                    if engine.devMode {
+                        section("DEV — PREPARED") {
+                            row("arrow.up.arrow.down", "Lend pet to a friend…", color: .purple) { onLend?() }
+                            row("arrow.down.arrow.up", "Borrow a pet…", color: .purple) { onBorrow?() }
+                            row("clock.arrow.circlepath", "Time skip +1h", color: .gray) { engine.timeSkip(3600) }
+                            row("clock.badge.xmark", "Time skip +6h", color: .gray) { engine.timeSkip(6 * 3600) }
+                            row("flame", "Starve to death (test)", color: .red) {
+                                engine.model.hunger = 0
+                                engine.model.happiness = 0
+                                engine.model.everHatched = true
+                                engine.timeSkip(3 * 3600)
+                            }
+                        }
                     }
                 }
             }
+            .frame(maxHeight: 300)
         }
         .padding(14)
         .frame(width: w, alignment: .leading)
@@ -110,6 +116,143 @@ struct SettingsCard: View {
     }
 
     // MARK: pieces
+
+    @ViewBuilder
+    private var brainSection: some View {
+        section("BRAIN") {
+            // API key — uses native NSTextField so paste (Cmd+V) works in the floating panel
+            HStack(spacing: 8) {
+                Image(systemName: "key.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.purple)
+                    .frame(width: 16)
+                PasteableTextField(
+                    text: $brainApiKey,
+                    placeholder: "API key (openrouter.ai / local)",
+                    isSecure: !showKey
+                )
+                .frame(maxWidth: .infinity)
+                Button { showKey.toggle() } label: {
+                    Image(systemName: showKey ? "eye.slash" : "eye")
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.35))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(0.06)))
+
+            // Endpoint
+            HStack(spacing: 8) {
+                Image(systemName: "link")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.blue)
+                    .frame(width: 16)
+                PasteableTextField(
+                    text: $brainEndpoint,
+                    placeholder: BrainEngine.defaultEndpoint
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(0.06)))
+
+            // Model
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.yellow)
+                    .frame(width: 16)
+                PasteableTextField(
+                    text: $brainModel,
+                    placeholder: BrainEngine.defaultModel
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(0.06)))
+
+            // Think interval
+            HStack(spacing: 0) {
+                Text("Think every")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.45))
+                    .padding(.trailing, 7)
+                pills([("2 min", 2.0), ("5 min", 5.0), ("15 min", 15.0), ("30 min", 30.0)],
+                      $brainInterval)
+            }
+
+            // Speech bubble font size
+            HStack(spacing: 0) {
+                Text("Bubble text")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.45))
+                    .padding(.trailing, 7)
+                pills([("S", 10.0), ("M", 14.0), ("L", 18.0), ("XL", 22.0)], $bubbleFontSize)
+            }
+
+            // Connection status + test button
+            HStack(spacing: 7) {
+                connectionDot
+                connectionLabel
+                Spacer()
+                Button {
+                    Task { await brain.testConnection() }
+                } label: {
+                    Text(brain.connectionStatus == .testing ? "Testing…" : "Test")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.white.opacity(0.1)))
+                }
+                .buttonStyle(.plain)
+                .disabled(brain.connectionStatus == .testing || brainApiKey.isEmpty)
+            }
+
+            Text("Get a free key at openrouter.ai · or point to a local server")
+                .font(.system(size: 8))
+                .foregroundColor(.white.opacity(0.3))
+        }
+    }
+
+    @ViewBuilder
+    private var connectionDot: some View {
+        switch brain.connectionStatus {
+        case .unknown:
+            Circle().fill(Color.white.opacity(0.2)).frame(width: 7, height: 7)
+        case .testing:
+            Circle().fill(Color.yellow).frame(width: 7, height: 7)
+                .opacity(1)
+                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true),
+                           value: brain.connectionStatus)
+        case .ok:
+            Circle().fill(Color.green).frame(width: 7, height: 7)
+        case .failed:
+            Circle().fill(Color.red).frame(width: 7, height: 7)
+        }
+    }
+
+    @ViewBuilder
+    private var connectionLabel: some View {
+        switch brain.connectionStatus {
+        case .unknown:
+            Text("Not tested")
+                .font(.system(size: 9)).foregroundColor(.white.opacity(0.3))
+        case .testing:
+            Text("Connecting…")
+                .font(.system(size: 9)).foregroundColor(.yellow.opacity(0.8))
+        case .ok(let model):
+            Text(model)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(.green.opacity(0.9))
+                .lineLimit(1).truncationMode(.middle)
+        case .failed(let msg):
+            Text(msg)
+                .font(.system(size: 9)).foregroundColor(.red.opacity(0.85))
+                .lineLimit(2)
+        }
+    }
 
     private var header: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -158,31 +301,6 @@ struct SettingsCard: View {
             .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.white.opacity(0.05)))
         }
         .buttonStyle(HoverPress())
-    }
-
-    @ViewBuilder
-    private var poolRow: some View {
-        if engine.hasGadget {
-            if engine.model.poolOwned == true {
-                row("water.waves", "Remove the pool…", color: .blue) { onRemovePool() }
-            } else {
-                row("water.waves", "Give it a pool…", color: .blue) { onGivePool() }
-            }
-        } else {
-            HStack(spacing: 8) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.3))
-                    .frame(width: 16)
-                Text("Pool: keep feeding to unlock…")
-                    .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.38))
-                Spacer()
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 9).fill(Color.clear))
-        }
     }
 
     private func switcher(_ title: String, isOn: Binding<Bool>) -> some View {
