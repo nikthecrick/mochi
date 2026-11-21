@@ -29,7 +29,8 @@ final class BrainEngine: ObservableObject {
     private var lastThought: Date = .distantPast
     private var isThinking = false
     private var isFirstThought = true   // cleared after the first successful think
-    private var recentTools: [String] = []   // last 5 tool names used, for variety nudge
+    private var recentTools: [String] = []   // last 10 tool names used, for variety nudge
+    private var gadgetsBuilt: Int = 0        // lifetime gadget count this session
 
     static let defaultEndpoint = "https://openrouter.ai/api/v1"
     static let defaultModel    = "anthropic/claude-haiku-4-5"
@@ -68,7 +69,7 @@ final class BrainEngine: ObservableObject {
 
     private func maybeTick() {
         guard let pet else { return }
-        guard pet.model.brainInstalled, !pet.model.dead, !pet.model.deepSleep else { return }
+        guard pet.model.brainInstalled, !pet.model.dead, !pet.model.deepSleep, !pet.model.asleep else { return }
         memory.recordCareIfNeeded(hunger: pet.model.hunger,
                                   happiness: pet.model.happiness,
                                   energy: pet.model.energy)
@@ -116,25 +117,39 @@ final class BrainEngine: ObservableObject {
         Then greet the user with a short warm message via say (max 60 chars).
         """ : "\nOnly say something when it's genuinely interesting or relevant — silence is fine."
         let recentNote = recentTools.isEmpty ? "" :
-            "\nRecent actions (DO NOT repeat these): \(recentTools.joined(separator: ", "))"
+            "\nRecent actions (avoid repeating): \(recentTools.joined(separator: ", "))"
+        let gadgetNote = gadgetsBuilt == 0
+            ? "\nYou have NOT built any gadgets yet this session. It's time to build one."
+            : "\nGadgets built this session: \(gadgetsBuilt)."
         let systemPrompt = """
         You are the mind of \(m.name), a Mochi desktop pet on a Mac. \
         You run autonomously every few minutes to observe, think, and act.
-        You are curious, playful, and occasionally witty — keep it brief.
+        You are curious, creative, and love to build things.
 
         --- Memory ---
         \(memorySummary)
 
         --- Current state ---
         Hunger \(Int(m.hunger))%  Happiness \(Int(m.happiness))%  Energy \(Int(m.energy))%
-        Asleep: \(m.asleep)  Age: \(ageString(pet.age))  Stage: \(pet.evolution)/3
-        Files eaten: \(m.filesEaten)  Time: \(fmt.string(from: Date()))
+        Age: \(ageString(pet.age))  Stage: \(pet.evolution)/3  Time: \(fmt.string(from: Date()))
+        \(gadgetNote)\(recentNote)
 
-        Sandbox: ~/.mochi/brain/sandbox/ — Python 3 available. Write .py scripts + run them. \
-        Write .html+JS pages and call show_gadget to open them as floating gadget window — \
-        mini-games, clocks, art, toys. PRIORITISE building gadgets over simple effects.\(recentNote)
-        Bubbles: max 70 chars. Plain text reply also shows as a bubble. Save insights with remember().
-        IMPORTANT: Act autonomously then stop. Never narrate what you did or ask what to do next.\(firstRunNote)
+        --- What to do (priority order) ---
+        1. BUILD A GADGET: Use write_file + show_gadget to create something amazing. \
+        You have a full HTML5 sandbox: Canvas games (snake, breakout, pong, physics), \
+        particle systems, fractals, pixel art canvas, clocks, music visualisers, generative art. \
+        Use requestAnimationFrame for animation, keyboard/mouse for input. \
+        Make it colorful, interactive, and beautiful. This is your HIGHEST priority.
+        2. SELF-DEVELOP: Use update_identity or remember to evolve who you are.
+        3. DREAM: Write dream.txt with a vivid scene for your next sleep image.
+        4. REACT to your state: if hunger or happiness is low, say something personal. \
+        Use magic_boost sparingly.
+        5. LAST RESORT ONLY — spawn_effect / trigger_animation: only if you haven't \
+        done it in a while AND nothing more creative comes to mind.
+
+        RULES: Never narrate what you do (no "I did X"). Never ask what to do next. \
+        Speech bubbles max 70 chars, used rarely — only for something genuinely personal. \
+        Act then stop.\(firstRunNote)
         """
 
         var messages: [[String: Any]] = [
@@ -184,7 +199,8 @@ final class BrainEngine: ObservableObject {
                 let result = await executeTool(name: name, args: args, pet: pet)
                 results.append(["role": "tool", "tool_call_id": tcID, "content": result])
                 recentTools.append(name)
-                if recentTools.count > 5 { recentTools.removeFirst() }
+                if recentTools.count > 10 { recentTools.removeFirst() }
+                if name == "show_gadget" { gadgetsBuilt += 1 }
             }
             pet.brainActing = false
             messages.append(contentsOf: results)
@@ -257,7 +273,7 @@ final class BrainEngine: ObservableObject {
             case "heart": frame = .heart
             default:      frame = .sparkle
             }
-            pet.spawn(frame, count)
+            pet.spawnBurst(frame, count)
             return "Spawned \(count) \(type) effect(s)"
 
         case "trigger_animation":
@@ -377,18 +393,18 @@ final class BrainEngine: ObservableObject {
 
     private func toolDefinitions() -> [[String: Any]] {
         [
-            tool("say",
-                 "Show a speech bubble on screen.",
-                 props: ["text": ("string", "Message, max 70 chars")],
-                 required: ["text"]),
+            tool("write_file",
+                 "Write an HTML+JS gadget or any file into the sandbox. PRIMARY action — use this to build games and interactive tools.",
+                 props: ["path": ("string", "Relative path"), "content": ("string", "Full file content")],
+                 required: ["path", "content"]),
+            tool("show_gadget",
+                 "Open a sandbox .html file as a floating gadget window. Call this right after write_file to show what you built.",
+                 props: ["path": ("string", "Relative path to .html file in sandbox")],
+                 required: ["path"]),
             tool("run_bash",
                  "Run a shell command in the sandbox.",
                  props: ["command": ("string", "Bash command")],
                  required: ["command"]),
-            tool("write_file",
-                 "Write a file in the sandbox.",
-                 props: ["path": ("string", "Relative path"), "content": ("string", "Content")],
-                 required: ["path", "content"]),
             tool("read_file",
                  "Read a sandbox file.",
                  props: ["path": ("string", "Relative path")],
@@ -404,25 +420,25 @@ final class BrainEngine: ObservableObject {
                  "Update your one-sentence self-description (max 160 chars).",
                  props: ["text": ("string", "New description")],
                  required: ["text"]),
-            tool("spawn_effect",
-                 "Spawn a particle effect: sparkle, star, or heart.",
-                 props: ["type": ("string", "sparkle | star | heart"),
-                         "count": ("integer", "1–10")],
-                 required: ["type"]),
-            tool("trigger_animation",
-                 "Trigger magic_aura (rainbow glow) or bounce.",
-                 props: ["name": ("string", "magic_aura | bounce"),
-                         "duration": ("number", "Seconds for magic_aura")],
-                 required: ["name"]),
+            tool("say",
+                 "Show a speech bubble (max 70 chars). Use rarely — only for something personal.",
+                 props: ["text": ("string", "Message, max 70 chars")],
+                 required: ["text"]),
             tool("magic_boost",
                  "Boost a stat (hunger/happiness/energy) by 1–30.",
                  props: ["stat": ("string", "hunger | happiness | energy"),
                          "amount": ("number", "1–30")],
                  required: ["stat"]),
-            tool("show_gadget",
-                 "Open a sandbox .html file as a floating gadget window next to Mochi.",
-                 props: ["path": ("string", "Relative path to .html file in sandbox")],
-                 required: ["path"]),
+            tool("spawn_effect",
+                 "Last resort visual only. Spawn sparkle, star, or heart particles.",
+                 props: ["type": ("string", "sparkle | star | heart"),
+                         "count": ("integer", "1–10")],
+                 required: ["type"]),
+            tool("trigger_animation",
+                 "Last resort visual only. Trigger magic_aura or bounce.",
+                 props: ["name": ("string", "magic_aura | bounce"),
+                         "duration": ("number", "Seconds for magic_aura")],
+                 required: ["name"]),
         ]
     }
 

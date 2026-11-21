@@ -162,6 +162,8 @@ final class PetEngine: ObservableObject {
     @Published var speechBubbleUntil: Date? = nil
     @Published var brainThinking: Bool = false
     @Published var brainActing: Bool = false       // true while brain executes a tool call
+    @Published var dreamImage: NSImage? = nil      // set by DreamEngine when sleeping
+    @Published var dreamLoading: Bool = false      // true while Pollinations fetch is in flight
     @Published var cocoonWakeUntil: Date? = nil  // non-nil while waking from cocoon
     @Published var magicAuraUntil: Date? = nil   // non-nil while magic aura is active
     private var lastScaleMark = -1.0
@@ -192,7 +194,16 @@ final class PetEngine: ObservableObject {
         let id = UUID()
         let frame: Frame        // heart / sparkle / ...
         let dx: Double
+        let dy: Double          // initial y offset for burst particles
         let start: Date
+        let scale: Double       // render scale (default 3)
+        let burst: Bool         // true = spreads outward; false = drifts up
+
+        init(frame: Frame, dx: Double, dy: Double = 0,
+             start: Date, scale: Double = 3, burst: Bool = false) {
+            self.frame = frame; self.dx = dx; self.dy = dy
+            self.start = start; self.scale = scale; self.burst = burst
+        }
     }
 
     enum WanderStep {
@@ -365,6 +376,7 @@ final class PetEngine: ObservableObject {
 
     /// Brain calls this to send a message to the user via the speech bubble.
     func speak(_ text: String, duration: Double = 9) {
+        guard !model.asleep else { return }
         withAnimation(.easeOut(duration: 0.3)) { speechBubble = text }
         speechBubbleUntil = now.addingTimeInterval(duration)
     }
@@ -852,20 +864,21 @@ final class PetEngine: ObservableObject {
     private func evolve() {
         if !hasLegs && model.filesEaten >= PetRates.mealsUntilLegs {
             model.legsGrown = true
-            legsUntil = now.addingTimeInterval(3.5)   // celebrate with a trot
-            spawn(.sparkle, 6)
+            legsUntil = now.addingTimeInterval(3.5)
+            spawnBurst(.sparkle, 10)
             print("Mochi: \(model.name) grew legs!")
             sound?.play(.hatch)
         } else if !hasArms && model.filesEaten >= PetRates.mealsUntilArms {
             model.armsGrown = true
             legsUntil = now.addingTimeInterval(3.5)
-            spawn(.sparkle, 8)
+            spawnBurst(.sparkle, 12)
             print("Mochi: \(model.name) grew little arms!")
             sound?.play(.hatch)
         } else if !hasGadget && model.filesEaten >= PetRates.mealsUntilGadget {
             model.gadget = true
             legsUntil = now.addingTimeInterval(3.5)
-            spawn(.sparkle, 10)
+            spawnBurst(.sparkle, 15)
+            spawnBurst(.star, 6)
             print("Mochi: \(model.name) got a gadget - cool shades! (and can now own a pool)")
             sound?.play(.hatch)
         } else {
@@ -1139,6 +1152,9 @@ final class PetEngine: ObservableObject {
             model.asleep = true
             walkUntil = nil
             sound?.play(.sleep)
+            withAnimation(.easeOut(duration: 0.3)) { speechBubble = nil }
+            speechBubbleUntil = nil
+            brainThinking = false
         }
         save()
     }
@@ -1172,8 +1188,8 @@ final class PetEngine: ObservableObject {
 
     func triggerMagicAura(seconds: Double = 6.0) {
         magicAuraUntil = now.addingTimeInterval(seconds)
-        spawn(.star, 4)
-        spawn(.sparkle, 2)
+        spawnBurst(.star, 6)
+        spawnBurst(.sparkle, 4)
     }
 
     var cocoonWaking: Bool { cocoonWakeUntil.map { now < $0 } ?? false }
@@ -1257,6 +1273,20 @@ final class PetEngine: ObservableObject {
             particles.append(Puff(frame: frame,
                                    dx: Double.random(in: -40...40),
                                    start: now))
+        }
+    }
+
+    /// Burst: particles fan out in all directions — wider, bigger, more magical.
+    func spawnBurst(_ frame: Frame, _ n: Int) {
+        for _ in 0..<n {
+            let angle = Double.random(in: 0..<Double.pi * 2)
+            let r     = Double.random(in: 24...72)
+            particles.append(Puff(frame: frame,
+                                   dx: cos(angle) * r,
+                                   dy: sin(angle) * r * 0.55,
+                                   start: now,
+                                   scale: Double.random(in: 2.5...4.5),
+                                   burst: true))
         }
     }
 

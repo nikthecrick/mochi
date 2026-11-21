@@ -1,10 +1,13 @@
 import AppKit
 import SwiftUI
+import Combine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let engine = PetEngine()
     private let brain  = BrainEngine()
     private let sound  = SoundBank()
+    private var dream: DreamEngine!
+    private var cancellables = Set<AnyCancellable>()
     private var panel: PetPanel?
     private var poolPanel: PetPanel?
     private var bedPanel: PetPanel?
@@ -92,6 +95,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         brain.pet = engine
         brain.onShowGadget = { [weak self] url in self?.showGadget(url: url) }
         brain.start()
+
+        // Dream engine — generates images from Pollinations.ai when Mochi sleeps
+        let sandboxURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".mochi/brain/sandbox")
+        dream = DreamEngine(sandboxURL: sandboxURL)
+        dream.pet = engine
+        engine.$model
+            .map(\.asleep)
+            .removeDuplicates()
+            .sink { [weak self] asleep in
+                guard let self else { return }
+                if asleep { Task { await self.dream.generateDream() } }
+                else      { self.dream.clearDream() }
+            }
+            .store(in: &cancellables)
 
         // Pet must be in front while swimming so the swimmer sprite is fully visible.
         // The pool bowl shows through the pet panel's transparent pixels.

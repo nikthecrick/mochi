@@ -242,6 +242,15 @@ struct PetRootView: View {
                         .zIndex(40)
                         .transition(.opacity)
                 }
+                // Dream image bubble (shown while sleeping, loading state before image arrives)
+                if engine.model.asleep, engine.dreamLoading || engine.dreamImage != nil {
+                    DreamBubble(image: engine.dreamImage)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .padding(.top, 4)
+                        .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                        .zIndex(48)
+                        .allowsHitTesting(false)
+                }
                 // Brain speech bubble / thinking indicator
                 if let bubble = engine.speechBubble {
                     SpeechBubble(text: bubble)
@@ -678,9 +687,14 @@ struct PetRootView: View {
     private func heartsOverlay(t: Double) -> some View {
         ForEach(engine.particles) { p in
             let ageT = max(0, t - p.start.timeIntervalSinceReferenceDate)
-            PixelSpriteView(frame: p.frame, scale: 3)
+            let spread = p.burst ? CGFloat(1 + ageT * 1.1) : 1   // burst particles accelerate outward
+            let ox = CGFloat(p.dx) * spread
+            let oy = p.burst
+                ? CGFloat(p.dy) * spread - CGFloat(ageT) * 10    // arc outward + slight rise
+                : -6 - CGFloat(ageT) * 16                         // normal: drift up
+            PixelSpriteView(frame: p.frame, scale: p.scale)
                 .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
-                .offset(x: CGFloat(p.dx), y: -6 - CGFloat(ageT) * 16)
+                .offset(x: ox, y: oy)
                 .opacity(Double(1 - ageT / 1.4))
                 .allowsHitTesting(false)
         }
@@ -1023,6 +1037,59 @@ private struct RightEarGlowMask: Shape {
         p.addLine(to: CGPoint(x: rx, y: ry + rh))
         p.closeSubpath()
         return p
+    }
+}
+
+// MARK: - Dream bubble (shown above Mochi while sleeping)
+
+struct DreamBubble: View {
+    let image: NSImage?
+    @State private var pulse = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.6, green: 0.4, blue: 1.0).opacity(0.35),
+                                Color(red: 0.3, green: 0.5, blue: 1.0).opacity(0.25),
+                            ],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                    )
+                    .blur(radius: 6)
+                    .padding(-4)
+
+                if let img = image {
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 130, height: 130)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .transition(.opacity)
+                } else {
+                    // Loading placeholder — softly pulsing stars
+                    Text("✦ ✦ ✦")
+                        .font(.system(size: 18))
+                        .foregroundColor(.white.opacity(pulse ? 0.7 : 0.25))
+                        .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: pulse)
+                        .onAppear { pulse = true }
+                }
+            }
+            .frame(width: 130, height: 130)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.45), lineWidth: 1.2)
+            )
+            .shadow(color: Color(red: 0.5, green: 0.3, blue: 1.0).opacity(0.5), radius: 12, y: 4)
+
+            Text("z z z")
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundColor(.white.opacity(0.7))
+                .padding(.top, 4)
+        }
     }
 }
 
