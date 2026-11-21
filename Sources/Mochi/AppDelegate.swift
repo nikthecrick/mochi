@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sandboxPanel: PetPanel?
     private var settingsPanel: PetPanel?
     private var shopPanel: PetPanel?
+    private var dreamPanel: PetPanel?
+    private var speechBubblePanel: PetPanel?
     private var gadgetPanels: [PetPanel] = []
     private let maxGadgets = 3
     private let gadgetLifetime: TimeInterval = 40
@@ -101,13 +103,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .appendingPathComponent(".mochi/brain/sandbox")
         dream = DreamEngine(sandboxURL: sandboxURL)
         dream.pet = engine
-        engine.$model
-            .map(\.asleep)
-            .removeDuplicates()
-            .sink { [weak self] asleep in
+        // Deep sleep (screen off) + bed sleep → dream panel
+        let dreamTrigger = Publishers.CombineLatest(
+            engine.$model.map(\.deepSleep).removeDuplicates(),
+            engine.$bedSleepUntil.map { $0 != nil }.removeDuplicates()
+        )
+        .map { $0 || $1 }
+        .removeDuplicates()
+        .receive(on: DispatchQueue.main)
+
+        dreamTrigger
+            .sink { [weak self] sleeping in
                 guard let self else { return }
-                if asleep { Task { await self.dream.generateDream() } }
-                else      { self.dream.clearDream() }
+                if sleeping {
+                    self.showDreamPanel()
+                    self.dream.startCycling()
+                } else {
+                    self.hideDreamPanel()
+                }
+            }
+            .store(in: &cancellables)
+
+        // Speech bubble: show in its own floating panel above the pet so it can grow freely.
+        engine.$speechBubble
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] text in
+                guard let self else { return }
+                if let text = text { self.showSpeechBubblePanel(text: text) }
+                else               { self.hideSpeechBubblePanel() }
             }
             .store(in: &cancellables)
 
@@ -341,13 +364,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ))
         gadgetPanels.append(p)
         placeGadget(p, index: idx)
-        activateAndShow(p)
+        p.orderFrontRegardless()   // never steal focus from other apps
 
         // Auto-close after gadgetLifetime seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + gadgetLifetime) { [weak self, weak p] in
             guard let p else { return }
             self?.removeGadget(p)
         }
+    }
+
+    // MARK: - Dream panel (floats above Mochi while sleeping)
+
+    private func showDreamPanel() {
+        guard dreamPanel == nil, let mainPanel = panel else { return }
+        let p = PetPanel.make()
+        p.contentView = NSHostingView(rootView: DreamOverlayView(engine: engine))
+        dreamPanel = p
+        let size = NSSize(width: 154, height: 162)
+        var origin = NSPoint(
+            x: mainPanel.frame.midX - size.width / 2,
+            y: mainPanel.frame.maxY + 8
+        )
+        if let vis = NSScreen.main?.visibleFrame {
+            origin.x = min(max(vis.minX, origin.x), vis.maxX - size.width)
+            origin.y = min(vis.maxY - size.height, origin.y)
+        }
+        p.setFrame(NSRect(origin: origin, size: size), display: true)
+        p.orderFrontRegardless()
+    }
+
+    private func hideDreamPanel() {
+        guard dreamPanel != nil, !engine.dreamDismissing else { return }
+        engine.dreamDismissing = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+            guard let self else { return }
+            self.dreamPanel?.orderOut(nil)
+            self.dreamPanel = nil
+            self.dream.clearDream()
+            self.engine.dreamDismissing = false
+        }
+    }
+
+    // MARK: - Speech bubble panel (floats above Mochi, auto-sized to fit text)
+
+    private func showSpeechBubblePanel(text: String) {
+        hideSpeechBubblePanel()
+        guard let mainPanel = panel else { return }
+        // Measure natural height: use a tall unconstrained frame so fittingSize returns the true content height.
+        let measuring = NSHostingView(rootView: SpeechBubble(text: text).padding(4))
+        measuring.frame = NSRect(x: 0, y: 0, width: 248, height: 2000)
+        measuring.layoutSubtreeIfNeeded()
+        let fitted = measuring.fittingSize
+        let panelH = max(min(fitted.height > 10 ? fitted.height : 150, 400), 60)
+        let size = NSSize(width: 248, height: panelH)
+        let hosting = NSHostingView(rootView: SpeechBubble(text: text).padding(4))
+        let p = PetPanel.make()
+        p.contentView = hosting
+        speechBubblePanel = p
+        // Mirror the original ZStack position: bubble top sits 6 pt below the main panel's top edge,
+        // extending downward — same as alignment: .top with padding(.top, 6) inside the 280×240 frame.
+        // This always works regardless of where Mochi is on screen.
+        var origin = NSPoint(
+            x: mainPanel.frame.midX - size.width / 2,
+            y: mainPanel.frame.maxY - size.height - 6
+        )
+        if let vis = NSScreen.main?.visibleFrame {
+            origin.x = min(max(vis.minX, origin.x), vis.maxX - size.width)
+        }
+        p.setFrame(NSRect(origin: origin, size: size), display: true)
+        p.orderFrontRegardless()
+    }
+
+    private func hideSpeechBubblePanel() {
+        speechBubblePanel?.orderOut(nil)
+        speechBubblePanel = nil
     }
 
     private func removeGadget(_ p: PetPanel) {

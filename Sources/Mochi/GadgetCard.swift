@@ -1,7 +1,56 @@
 import SwiftUI
 import WebKit
 
+// MARK: - Dream overlay: live view hosted in its own floating panel above Mochi
+
+struct DreamOverlayView: View {
+    @ObservedObject var engine: PetEngine
+    @State private var scale: CGFloat = 0.05
+    @State private var opacity: Double = 0
+
+    var body: some View {
+        DreamBubble(image: engine.dreamImage)
+            .padding(6)
+            .scaleEffect(scale, anchor: .bottom)
+            .opacity(opacity)
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.72)) {
+                        scale = 1.0
+                        opacity = 1.0
+                    }
+                }
+            }
+            .onChange(of: engine.dreamDismissing) { dismissing in
+                guard dismissing else { return }
+                withAnimation(.easeOut(duration: 0.35)) {
+                    scale = 1.2
+                    opacity = 0
+                }
+            }
+    }
+}
+
 // MARK: - Gadget card: retro 8-bit floating window hosting a brain-generated HTML file
+
+// Transparent NSView that initiates native window dragging via performDrag —
+// buttery smooth because it runs in NSEventTrackingRunLoopMode, no SwiftUI overhead.
+private struct WindowDragHandle: NSViewRepresentable {
+    func makeNSView(context: Context) -> _DragHandleView { _DragHandleView() }
+    func updateNSView(_ v: _DragHandleView, context: Context) {}
+
+    final class _DragHandleView: NSView {
+        private var downEvent: NSEvent?
+        override func mouseDown(with e: NSEvent) { downEvent = e }
+        override func mouseDragged(with e: NSEvent) {
+            guard let d = downEvent else { return }
+            window?.performDrag(with: d)
+            downEvent = nil
+        }
+        override func mouseUp(with e: NSEvent) { downEvent = nil }
+        override func acceptsFirstMouse(for e: NSEvent?) -> Bool { true }
+    }
+}
 
 struct GadgetCard: View {
     let url: URL
@@ -47,14 +96,19 @@ struct GadgetCard: View {
 
     private var titleBar: some View {
         HStack(spacing: 0) {
-            // Blinking-pixel style decorations
-            Text("■ ")
-                .font(PixelFont.font(5))
-                .foregroundColor(accent.opacity(0.6))
-            Text("GADGET")
-                .font(PixelFont.font(6))
-                .foregroundColor(accent)
-            Spacer()
+            // Drag area: icon + title + spacer — covered by native drag handle
+            HStack(spacing: 0) {
+                Text("■ ")
+                    .font(PixelFont.font(5))
+                    .foregroundColor(accent.opacity(0.6))
+                Text("MOCHI GADGET")
+                    .font(PixelFont.font(6))
+                    .foregroundColor(accent)
+                Spacer()
+            }
+            .overlay(WindowDragHandle())
+
+            // Close button is outside the drag handle area
             Button(action: onClose) {
                 Text("[×]")
                     .font(PixelFont.font(6))
@@ -86,7 +140,8 @@ struct GadgetWebView: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences = prefs
         let wv = WKWebView(frame: .zero, configuration: config)
-        wv.setValue(false, forKey: "drawsBackground")
+        wv.setValue(true, forKey: "drawsBackground")
+        wv.layer?.backgroundColor = NSColor.black.cgColor
         load(wv)
         return wv
     }

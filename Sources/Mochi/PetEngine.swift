@@ -164,6 +164,7 @@ final class PetEngine: ObservableObject {
     @Published var brainActing: Bool = false       // true while brain executes a tool call
     @Published var dreamImage: NSImage? = nil      // set by DreamEngine when sleeping
     @Published var dreamLoading: Bool = false      // true while Pollinations fetch is in flight
+    @Published var dreamDismissing: Bool = false   // true during puff-out animation before panel closes
     @Published var cocoonWakeUntil: Date? = nil  // non-nil while waking from cocoon
     @Published var magicAuraUntil: Date? = nil   // non-nil while magic aura is active
     private var lastScaleMark = -1.0
@@ -376,7 +377,7 @@ final class PetEngine: ObservableObject {
 
     /// Brain calls this to send a message to the user via the speech bubble.
     func speak(_ text: String, duration: Double = 9) {
-        guard !model.asleep else { return }
+        guard !model.asleep, !bedSleepActive else { return }
         withAnimation(.easeOut(duration: 0.3)) { speechBubble = text }
         speechBubbleUntil = now.addingTimeInterval(duration)
     }
@@ -621,6 +622,9 @@ final class PetEngine: ObservableObject {
         bedStartedAt = now
         bedSleepClickCount = 0
         model.happiness = min(100, model.happiness + 5)
+        withAnimation(.easeOut(duration: 0.3)) { speechBubble = nil }
+        speechBubbleUntil = nil
+        brainThinking = false
         spawn(.sparkle, 2)
         sound?.play(.sleep)
         onBedSleepStart?()
@@ -1166,6 +1170,9 @@ final class PetEngine: ObservableObject {
         model.asleep = true
         walkUntil = nil
         swimUntil = nil
+        withAnimation(.easeOut(duration: 0.3)) { speechBubble = nil }
+        speechBubbleUntil = nil
+        brainThinking = false
         sound?.play(.sleep)
         save()
         print("Mochi: \(model.name) hibernates — screen off")

@@ -7,6 +7,7 @@ final class DreamEngine {
 
     private var isGenerating = false
     private let sandboxURL: URL
+    private var cycleTask: Task<Void, Never>?
 
     // Dreamy prompts — varied so each sleep feels different.
     // The brain can override by writing a prompt to sandbox/dream.txt.
@@ -75,7 +76,26 @@ final class DreamEngine {
         }
     }
 
+    // Start continuous dreaming: generate immediately, then cycle every 45 s.
+    func startCycling() {
+        stopCycling()
+        cycleTask = Task {
+            await generateDream()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(45)) } catch { break }
+                if Task.isCancelled { break }
+                await generateDream()
+            }
+        }
+    }
+
+    func stopCycling() {
+        cycleTask?.cancel()
+        cycleTask = nil
+    }
+
     func clearDream() {
+        stopCycling()
         Task { @MainActor in
             pet?.dreamImage = nil
             pet?.dreamLoading = false

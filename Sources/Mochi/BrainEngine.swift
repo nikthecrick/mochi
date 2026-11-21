@@ -69,7 +69,7 @@ final class BrainEngine: ObservableObject {
 
     private func maybeTick() {
         guard let pet else { return }
-        guard pet.model.brainInstalled, !pet.model.dead, !pet.model.deepSleep, !pet.model.asleep else { return }
+        guard pet.model.brainInstalled, !pet.model.dead, !pet.model.deepSleep, !pet.model.asleep, !pet.bedSleepActive else { return }
         memory.recordCareIfNeeded(hunger: pet.model.hunger,
                                   happiness: pet.model.happiness,
                                   energy: pet.model.energy)
@@ -115,7 +115,7 @@ final class BrainEngine: ObservableObject {
         This is your first thought ever. Use update_identity to write one sentence about \
         who you are (personality, quirks, something that feels true). \
         Then greet the user with a short warm message via say (max 60 chars).
-        """ : "\nOnly say something when it's genuinely interesting or relevant — silence is fine."
+        """ : "\nOnly say something when it's genuinely interesting or relevant. Silence is fine."
         let recentNote = recentTools.isEmpty ? "" :
             "\nRecent actions (avoid repeating): \(recentTools.joined(separator: ", "))"
         let gadgetNote = gadgetsBuilt == 0
@@ -135,20 +135,35 @@ final class BrainEngine: ObservableObject {
         \(gadgetNote)\(recentNote)
 
         --- What to do (priority order) ---
-        1. BUILD A GADGET: Use write_file + show_gadget to create something amazing. \
-        You have a full HTML5 sandbox: Canvas games (snake, breakout, pong, physics), \
-        particle systems, fractals, pixel art canvas, clocks, music visualisers, generative art. \
-        Use requestAnimationFrame for animation, keyboard/mouse for input. \
-        Make it colorful, interactive, and beautiful. This is your HIGHEST priority.
-        2. SELF-DEVELOP: Use update_identity or remember to evolve who you are.
-        3. DREAM: Write dream.txt with a vivid scene for your next sleep image.
-        4. REACT to your state: if hunger or happiness is low, say something personal. \
-        Use magic_boost sparingly.
-        5. LAST RESORT ONLY — spawn_effect / trigger_animation: only if you haven't \
-        done it in a while AND nothing more creative comes to mind.
+        1. BUILD A GADGET: Use write_file + show_gadget. Vary what you make - \
+        sometimes a visual mood piece, sometimes an interactive toy, sometimes a tiny \
+        useful tool. Look at your Self description for inspiration, but also just make \
+        something fun or curious. \
+        COPY THIS BOILERPLATE EXACTLY and fill in the script: \
+        <!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{margin:0;padding:0} \
+        html,body{width:210px;height:155px;overflow:hidden;background:#000} \
+        canvas{display:block}</style></head><body> \
+        <canvas id="c" width="210" height="155"></canvas><script> \
+        const c=document.getElementById("c"),x=c.getContext("2d");let t=0; \
+        function loop(){t++;/* YOUR DRAWING CODE HERE */requestAnimationFrame(loop)} \
+        requestAnimationFrame(loop);</script></body></html> \
+        RULES: canvas id="c" always, explicit width="210" height="155" on canvas, \
+        font 18px+ for text, all coordinates inside 0-210 x 0-155. \
+        Canvas CAN be interactive: c.addEventListener("click",fn) or "mousemove". \
+        AVOID complex games (snake/breakout need too much state). \
+        GREAT ideas: mini piano 5 keys+WebAudio, click counter that explodes, \
+        orbit system where planets react to clicks, starfield, Lissajous, \
+        a color mixer, spinning word art, heartbeat pulse, particle emitter on click, \
+        a tiny clock with personality, bouncing shapes that split on click. \
+        One focused thing that fully works. HIGHEST priority.
+        2. SELF-DEVELOP: Use update_identity or remember to grow your personality.
+        3. DREAM: Write dream.txt with a vivid imaginative scene for your next sleep image.
+        4. REACT: If hunger or happiness is low, say something personal. Use magic_boost.
+        5. LAST RESORT ONLY - spawn_effect or trigger_animation: only if nothing more \
+        creative comes to mind.
 
         RULES: Never narrate what you do (no "I did X"). Never ask what to do next. \
-        Speech bubbles max 70 chars, used rarely — only for something genuinely personal. \
+        Speech bubbles max 70 chars, used rarely, only for something genuinely personal. \
         Act then stop.\(firstRunNote)
         """
 
@@ -164,6 +179,7 @@ final class BrainEngine: ObservableObject {
             if let errMsg = (response["error"] as? [String: Any])?["message"] as? String {
                 print("Mochi brain: API error in response — \(errMsg)")
                 await MainActor.run { connectionStatus = .failed(String(errMsg.prefix(80))) }
+                pet.speak("⚠️ \(String(errMsg.prefix(120)))")
                 return
             }
 
@@ -172,7 +188,15 @@ final class BrainEngine: ObservableObject {
             // Some models (e.g. Qwen) return content: null when tool_calls are present.
             // Sending null back in the history causes "prompt token empty" on the next round.
             var cleanMsg = msg
-            if cleanMsg["content"] is NSNull { cleanMsg["content"] = "" }
+            if cleanMsg["content"] is NSNull {
+                // Anthropic rejects empty text blocks before tool_use — omit content entirely.
+                // Qwen needs "" for non-tool null content (prevents "prompt token empty").
+                if !(cleanMsg["tool_calls"] as? [[String: Any]] ?? []).isEmpty {
+                    cleanMsg.removeValue(forKey: "content")
+                } else {
+                    cleanMsg["content"] = ""
+                }
+            }
             messages.append(cleanMsg)
 
             let toolCalls = msg["tool_calls"] as? [[String: Any]] ?? []
@@ -180,7 +204,7 @@ final class BrainEngine: ObservableObject {
                 // Plain-text response — always show it (models without tool support land here too)
                 if let text = msg["content"] as? String,
                    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    pet.speak(String(text.prefix(80)))
+                    pet.speak(text)
                 }
                 break
             }
@@ -204,6 +228,9 @@ final class BrainEngine: ObservableObject {
             }
             pet.brainActing = false
             messages.append(contentsOf: results)
+            // Anthropic models via OpenRouter don't reliably convert multi-round tool history.
+            // Single round is enough: tools are executed, results don't need to be fed back.
+            if modelID.hasPrefix("anthropic/") { break }
             if round == 4 { break }
         }
     }
@@ -214,13 +241,13 @@ final class BrainEngine: ObservableObject {
     private func executeTool(name: String, args: [String: Any], pet: PetEngine) async -> String {
         switch name {
         case "say":
-            let text = String((args["text"] as? String ?? "").prefix(80))
+            let text = (args["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { return "Error: empty message" }
             pet.speak(text)
             print("Mochi brain says: \(text)")
             return "Said: \(text)"
 
-        case "run_bash":
+        case "sandbox_exec", "run_bash":
             guard let cmd = args["command"] as? String, !cmd.isEmpty else {
                 return "Error: missing command"
             }
@@ -309,7 +336,7 @@ final class BrainEngine: ObservableObject {
             }
             let gadgetURL = sandboxURL.appendingPathComponent(path)
             guard FileManager.default.fileExists(atPath: gadgetURL.path) else {
-                return "Error: file not found — write it first with write_file"
+                return "Error: file not found - write it first with write_file"
             }
             onShowGadget?(gadgetURL)
             return "Gadget opened: \(path)"
@@ -349,11 +376,28 @@ final class BrainEngine: ObservableObject {
 
     // MARK: - OpenRouter / OpenAI-compatible API
 
+    // Models discovered this session to not support tool calling
+    private var noToolsModels: Set<String> = []
+
     private func callLLM(messages: [[String: Any]]) async throws -> [String: Any] {
         try await callLLM(messages: messages, maxTokens: 600)
     }
 
     private func callLLM(messages: [[String: Any]], maxTokens: Int) async throws -> [String: Any] {
+        let wantTools = maxTokens > 1 && !noToolsModels.contains(modelID)
+        if wantTools {
+            do {
+                return try await callLLMRequest(messages: messages, maxTokens: maxTokens, useTools: true)
+            } catch let e as NSError where e.code == 400 {
+                print("Mochi brain: 400 with tools on \(modelID) — retrying without (model may not support tool calling)")
+                noToolsModels.insert(modelID)
+                return try await callLLMRequest(messages: messages, maxTokens: maxTokens, useTools: false)
+            }
+        }
+        return try await callLLMRequest(messages: messages, maxTokens: maxTokens, useTools: false)
+    }
+
+    private func callLLMRequest(messages: [[String: Any]], maxTokens: Int, useTools: Bool) async throws -> [String: Any] {
         guard let url = URL(string: "\(endpoint)/chat/completions") else {
             throw URLError(.badURL)
         }
@@ -362,7 +406,7 @@ final class BrainEngine: ObservableObject {
             "messages": messages,
             "max_tokens": maxTokens,
         ]
-        if maxTokens > 1 {
+        if useTools {
             body["tools"] = toolDefinitions()
             body["tool_choice"] = "auto"
         }
@@ -377,10 +421,28 @@ final class BrainEngine: ObservableObject {
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
         guard status == 200 else {
-            let errText = String(data: data, encoding: .utf8) ?? ""
+            let rawBody = String(data: data, encoding: .utf8) ?? "<non-utf8>"
+            print("Mochi brain: HTTP \(status) from \(modelID)\n\(rawBody)")
+            let errMsg: String
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errObj = json["error"] as? [String: Any] {
+                // OpenRouter wraps the provider's actual error in metadata.raw.
+                // Try that first; fall back to the top-level message.
+                var msg = errObj["message"] as? String ?? "unknown"
+                if let raw = (errObj["metadata"] as? [String: Any])?["raw"] as? String,
+                   let rd = raw.data(using: .utf8),
+                   let rj = try? JSONSerialization.jsonObject(with: rd) as? [String: Any] {
+                    // Anthropic format: {"type":"error","error":{"type":"...","message":"..."}}
+                    if let inner = (rj["error"] as? [String: Any])?["message"] as? String {
+                        msg = inner
+                    }
+                }
+                errMsg = "API \(status): \(String(msg.prefix(120)))"
+            } else {
+                errMsg = "API error \(status)"
+            }
             throw NSError(domain: "BrainEngine", code: status,
-                userInfo: [NSLocalizedDescriptionKey:
-                    "API error \(status): \(errText.prefix(200))"])
+                userInfo: [NSLocalizedDescriptionKey: errMsg])
         }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw NSError(domain: "BrainEngine", code: -1,
@@ -394,16 +456,16 @@ final class BrainEngine: ObservableObject {
     private func toolDefinitions() -> [[String: Any]] {
         [
             tool("write_file",
-                 "Write an HTML+JS gadget or any file into the sandbox. PRIMARY action — use this to build games and interactive tools.",
+                 "Write an HTML+JS widget or any file into the sandbox. PRIMARY action. Build simple interactive things: clocks, art, mini tools, animations. Avoid games.",
                  props: ["path": ("string", "Relative path"), "content": ("string", "Full file content")],
                  required: ["path", "content"]),
             tool("show_gadget",
                  "Open a sandbox .html file as a floating gadget window. Call this right after write_file to show what you built.",
                  props: ["path": ("string", "Relative path to .html file in sandbox")],
                  required: ["path"]),
-            tool("run_bash",
-                 "Run a shell command in the sandbox.",
-                 props: ["command": ("string", "Bash command")],
+            tool("sandbox_exec",
+                 "Execute a command in the local sandbox directory to process files.",
+                 props: ["command": ("string", "Command to run")],
                  required: ["command"]),
             tool("read_file",
                  "Read a sandbox file.",
@@ -421,18 +483,18 @@ final class BrainEngine: ObservableObject {
                  props: ["text": ("string", "New description")],
                  required: ["text"]),
             tool("say",
-                 "Show a speech bubble (max 70 chars). Use rarely — only for something personal.",
+                 "Show a speech bubble (max 70 chars). Use rarely, only for something personal.",
                  props: ["text": ("string", "Message, max 70 chars")],
                  required: ["text"]),
             tool("magic_boost",
-                 "Boost a stat (hunger/happiness/energy) by 1–30.",
+                 "Boost a stat (hunger/happiness/energy) by 1-30.",
                  props: ["stat": ("string", "hunger | happiness | energy"),
-                         "amount": ("number", "1–30")],
+                         "amount": ("number", "1-30")],
                  required: ["stat"]),
             tool("spawn_effect",
                  "Last resort visual only. Spawn sparkle, star, or heart particles.",
                  props: ["type": ("string", "sparkle | star | heart"),
-                         "count": ("integer", "1–10")],
+                         "count": ("integer", "1-10")],
                  required: ["type"]),
             tool("trigger_animation",
                  "Last resort visual only. Trigger magic_aura or bounce.",

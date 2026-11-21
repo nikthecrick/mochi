@@ -242,23 +242,9 @@ struct PetRootView: View {
                         .zIndex(40)
                         .transition(.opacity)
                 }
-                // Dream image bubble (shown while sleeping, loading state before image arrives)
-                if engine.model.asleep, engine.dreamLoading || engine.dreamImage != nil {
-                    DreamBubble(image: engine.dreamImage)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .padding(.top, 4)
-                        .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                        .zIndex(48)
-                        .allowsHitTesting(false)
-                }
-                // Brain speech bubble / thinking indicator
-                if let bubble = engine.speechBubble {
-                    SpeechBubble(text: bubble)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .padding(.top, 6)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                        .zIndex(50)
-                } else if engine.brainThinking {
+                // Dream bubble is shown in its own floating panel (see AppDelegate.showDreamPanel)
+                // Brain thinking indicator (the actual speech bubble is in its own floating panel)
+                if engine.brainThinking && engine.speechBubble == nil {
                     SpeechBubble(text: "...", thinking: true)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .padding(.top, 6)
@@ -1069,6 +1055,7 @@ struct DreamBubble: View {
                         .frame(width: 130, height: 130)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.8), value: image)
                 } else {
                     // Loading placeholder — softly pulsing stars
                     Text("✦ ✦ ✦")
@@ -1118,7 +1105,6 @@ struct SpeechBubble: View {
                     .font(PixelFont.font(fontSize))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                    .lineLimit(8)
                     .fixedSize(horizontal: false, vertical: true)
                     .shadow(color: .black.opacity(0.55), radius: 1, y: 1)
             }
