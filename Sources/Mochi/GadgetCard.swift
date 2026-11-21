@@ -1,57 +1,77 @@
 import SwiftUI
 import WebKit
 
-// MARK: - Gadget card: floating window that hosts an HTML file from the brain sandbox
+// MARK: - Gadget card: retro 8-bit floating window hosting a brain-generated HTML file
 
 struct GadgetCard: View {
     let url: URL
     var onClose: () -> Void
 
-    private let w: CGFloat = 300
+    private let w: CGFloat = 220
+    private let contentH: CGFloat = 170
+    private let accent = Color(red: 0.55, green: 0.25, blue: 1.0)
+    private let bg    = Color(red: 0.04, green: 0.03, blue: 0.10)
+    private let bgBar = Color(red: 0.09, green: 0.06, blue: 0.18)
 
     var body: some View {
         VStack(spacing: 0) {
-            header
+            titleBar
+            // 1-px divider line in accent colour
+            accent.opacity(0.5).frame(height: 1)
             GadgetWebView(url: url)
-                .frame(width: w, height: 210)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 10)
-                .padding(.bottom, 12)
+                .frame(width: w, height: contentH)
         }
         .frame(width: w)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color(nsColor: NSColor(red: 0.10, green: 0.09, blue: 0.14, alpha: 0.92)))
-                .shadow(color: .black.opacity(0.5), radius: 16, y: 8)
-        )
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.13)))
-        .overlay(alignment: .topTrailing) {
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.6))
-                    .frame(width: 22, height: 22)
-                    .background(Circle().fill(Color.white.opacity(0.08)))
+        .background(bg)
+        // pixel-style double border
+        .overlay(
+            ZStack {
+                Rectangle().stroke(accent, lineWidth: 2)
+                Rectangle().inset(by: 3).stroke(accent.opacity(0.25), lineWidth: 1)
             }
-            .buttonStyle(.plain)
-            .padding(10)
-            .help("Close gadget")
-        }
+        )
+        // bright corner squares for that 8-bit chrome feel
+        .overlay(
+            GeometryReader { g in
+                let dot: CGFloat = 4
+                Group {
+                    cornerDot.position(x: dot / 2, y: dot / 2)
+                    cornerDot.position(x: g.size.width - dot / 2, y: dot / 2)
+                    cornerDot.position(x: dot / 2, y: g.size.height - dot / 2)
+                    cornerDot.position(x: g.size.width - dot / 2, y: g.size.height - dot / 2)
+                }
+            }
+        )
+        .shadow(color: accent.opacity(0.35), radius: 10, y: 4)
     }
 
-    private var header: some View {
-        HStack(spacing: 7) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.purple)
-            Text("MOCHI GADGET")
+    private var titleBar: some View {
+        HStack(spacing: 0) {
+            // Blinking-pixel style decorations
+            Text("■ ")
+                .font(PixelFont.font(5))
+                .foregroundColor(accent.opacity(0.6))
+            Text("GADGET")
                 .font(PixelFont.font(6))
-                .foregroundColor(.white.opacity(0.45))
+                .foregroundColor(accent)
             Spacer()
+            Button(action: onClose) {
+                Text("[×]")
+                    .font(PixelFont.font(6))
+                    .foregroundColor(accent.opacity(0.75))
+            }
+            .buttonStyle(.plain)
+            .help("Close")
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 14)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(bgBar)
+    }
+
+    private var cornerDot: some View {
+        Rectangle()
+            .fill(accent)
+            .frame(width: 4, height: 4)
     }
 }
 
@@ -72,12 +92,10 @@ struct GadgetWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ wv: WKWebView, context: Context) {
-        // Reload only when the URL actually changed
         if wv.url != url { load(wv) }
     }
 
     private func load(_ wv: WKWebView) {
-        // allowingReadAccessTo: sandbox dir so relative CSS/JS imports work
         wv.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
     }
 }
