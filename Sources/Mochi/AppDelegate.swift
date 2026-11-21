@@ -16,7 +16,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsPanel: PetPanel?
     private var shopPanel: PetPanel?
     private var dreamPanel: PetPanel?
-    private var speechBubblePanel: PetPanel?
     private var gadgetPanels: [PetPanel] = []
     private let maxGadgets = 3
     private let gadgetLifetime: TimeInterval = 40
@@ -124,16 +123,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        // Speech bubble: show in its own floating panel above the pet so it can grow freely.
-        engine.$speechBubble
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] text in
-                guard let self else { return }
-                if let text = text { self.showSpeechBubblePanel(text: text) }
-                else               { self.hideSpeechBubblePanel() }
-            }
-            .store(in: &cancellables)
-
         // Pet must be in front while swimming so the swimmer sprite is fully visible.
         // The pool bowl shows through the pet panel's transparent pixels.
         engine.onSwimStart = { [weak self] in
@@ -189,7 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func onSystemWake(_ n: Notification)  { engine.exitDeepSleep() }
 
     private func defaultWindowFrame() -> NSRect {
-        let size = NSSize(width: 280, height: 240)
+        let size = NSSize(width: 280, height: basePanelHeight + bubbleExtraHeight)
         var origin = NSPoint(x: engine.model.windowX, y: engine.model.windowY)
         if origin.x < 0 || origin.y < 0 {
             let vis = NSScreen.main?.visibleFrame ?? NSRect(x: 120, y: 120, width: 1280, height: 800)
@@ -293,7 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let hosting = p.contentView as? NSHostingView<SettingsCard> else { return }
         hosting.invalidateIntrinsicContentSize()
         let size = hosting.fittingSize.width > 10 ? hosting.fittingSize : NSSize(width: 248, height: 420)
-        var o = NSPoint(x: pet.frame.maxX + 14, y: pet.frame.maxY - size.height)
+        var o = NSPoint(x: pet.frame.maxX + 14, y: pet.frame.minY + basePanelHeight - size.height)
         if let vis = NSScreen.main?.visibleFrame {
             o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
             o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
@@ -340,7 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let pet = panel else { return }
         let size = NSSize(width: 248, height: 440)
         var o = NSPoint(x: pet.frame.minX - size.width - 14,
-                        y: pet.frame.maxY - size.height)
+                        y: pet.frame.minY + basePanelHeight - size.height)
         if let vis = NSScreen.main?.visibleFrame {
             o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
             o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
@@ -383,7 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let size = NSSize(width: 154, height: 162)
         var origin = NSPoint(
             x: mainPanel.frame.midX - size.width / 2,
-            y: mainPanel.frame.maxY + 8
+            y: mainPanel.frame.minY + basePanelHeight + 8
         )
         if let vis = NSScreen.main?.visibleFrame {
             origin.x = min(max(vis.minX, origin.x), vis.maxX - size.width)
@@ -405,40 +394,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Speech bubble panel (floats above Mochi, auto-sized to fit text)
-
-    private func showSpeechBubblePanel(text: String) {
-        hideSpeechBubblePanel()
-        guard let mainPanel = panel else { return }
-        // Measure natural height: use a tall unconstrained frame so fittingSize returns the true content height.
-        let measuring = NSHostingView(rootView: SpeechBubble(text: text).padding(4))
-        measuring.frame = NSRect(x: 0, y: 0, width: 248, height: 2000)
-        measuring.layoutSubtreeIfNeeded()
-        let fitted = measuring.fittingSize
-        let panelH = max(min(fitted.height > 10 ? fitted.height : 150, 400), 60)
-        let size = NSSize(width: 248, height: panelH)
-        let hosting = NSHostingView(rootView: SpeechBubble(text: text).padding(4))
-        let p = PetPanel.make()
-        p.contentView = hosting
-        speechBubblePanel = p
-        // Mirror the original ZStack position: bubble top sits 6 pt below the main panel's top edge,
-        // extending downward — same as alignment: .top with padding(.top, 6) inside the 280×240 frame.
-        // This always works regardless of where Mochi is on screen.
-        var origin = NSPoint(
-            x: mainPanel.frame.midX - size.width / 2,
-            y: mainPanel.frame.maxY - size.height - 6
-        )
-        if let vis = NSScreen.main?.visibleFrame {
-            origin.x = min(max(vis.minX, origin.x), vis.maxX - size.width)
-        }
-        p.setFrame(NSRect(origin: origin, size: size), display: true)
-        p.orderFrontRegardless()
-    }
-
-    private func hideSpeechBubblePanel() {
-        speechBubblePanel?.orderOut(nil)
-        speechBubblePanel = nil
-    }
+    private let basePanelHeight: CGFloat = 240
+    private let bubbleExtraHeight: CGFloat = 200
 
     private func removeGadget(_ p: PetPanel) {
         p.orderOut(nil)
@@ -452,7 +409,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let dx = CGFloat(index) * 28
         let dy = CGFloat(index) * 12
         var o = NSPoint(x: pet.frame.midX - size.width / 2 + dx,
-                        y: pet.frame.maxY + 10 + dy)
+                        y: pet.frame.minY + basePanelHeight + 10 + dy)
         if let vis = NSScreen.main?.visibleFrame {
             o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
             o.y = min(max(vis.minY, o.y), vis.maxY - size.height)
@@ -472,7 +429,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var clamped = false
         if let vis = NSScreen.main?.visibleFrame {
             let minX = vis.minX, maxX = vis.maxX - p.frame.width
-            let minY = vis.minY, maxY = vis.maxY - p.frame.height
+            let minY = vis.minY
+            // Use basePanelHeight for Y clamping so the bubble's extra panel height
+            // (which extends upward above the sprite) doesn't push Mochi down.
+            let maxY = vis.maxY - basePanelHeight
             if o.x < minX { o.x = minX; clamped = true }
             if o.x > maxX { o.x = maxX; clamped = true }
             if o.y < minY { o.y = minY; clamped = true }
@@ -484,7 +444,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func centre(of f: NSRect) -> (x: Double, y: Double) {
-        (Double(f.midX), Double(f.midY))
+        // Mochi always occupies the bottom basePanelHeight of the panel;
+        // report the center of that sprite area, not the full panel center.
+        (Double(f.midX), Double(f.minY + basePanelHeight / 2))
     }
 
     // MARK: - pool
@@ -720,7 +682,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                           width: size.width, height: size.height)
         }
         let pet = panel?.frame ?? NSRect(x: 200, y: 400, width: 280, height: 240)
-        var o = NSPoint(x: pet.minX - size.width - 20, y: pet.maxY - size.height)
+        var o = NSPoint(x: pet.minX - size.width - 20, y: pet.minY + basePanelHeight - size.height)
         if let vis = NSScreen.main?.visibleFrame {
             o.x = min(max(vis.minX, o.x), vis.maxX - size.width)
             o.y = min(max(vis.minY, o.y), vis.maxY - size.height)

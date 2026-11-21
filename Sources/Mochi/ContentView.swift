@@ -177,24 +177,51 @@ struct PetRootView: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.1)) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
+            petWithBubble(t: t)
+        }
+    }
+
+    @ViewBuilder
+    private func petWithBubble(t: Double) -> some View {
+        VStack(spacing: 0) {
+            // Spacer at the TOP absorbs extra panel height so bubble+Mochi sit at the bottom.
+            // When the bubble is 170 pt and the panel is 440 pt, Spacer = 30 pt (above the bubble).
+            // When there is no bubble (during the 0.25 s shrink delay), Spacer = 200 pt — Mochi stays put.
+            Spacer(minLength: 0)
+            if let text = engine.speechBubble {
+                SpeechBubble(text: text)
+                    .padding(.horizontal, 8)
+                    // Animation is embedded in the transition so only the bubble
+                    // fades — the VStack layout change (Spacer) is instant and
+                    // Mochi never slides when the panel resizes.
+                    .transition(
+                        .opacity
+                        .combined(with: .scale(scale: 0.95, anchor: .bottom))
+                        .animation(.easeInOut(duration: 0.15))
+                    )
+            } else if engine.brainThinking {
+                SpeechBubble(text: "...", thinking: true)
+                    .padding(.horizontal, 8)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.15)))
+            }
             content(t: t)
                 .frame(width: 280, height: 240)
                 .contentShape(Rectangle())
-                .onHover { engine.hover = $0 }     // whole-panel hover: controls stay
-                .background(PanelRightClickArea(onRightClick: popMenu))   // right-click anywhere
+                .onHover { engine.hover = $0 }
+                .background(PanelRightClickArea(onRightClick: popMenu))
                 .onChange(of: t) { nt in
-                    // drive the wander: the pet's window itself moves on screen
                     let dt = min(max(nt - lastT, 0), 1)
                     lastT = nt
                     guard dt > 0 else { return }
                     switch engine.stepWander(dt: dt) {
                     case .moving(let dx, let dy):
                         if dx != 0 || dy != 0 { moveWindow(dx, dy) }
-                    case .ended: settle()          // episode done: remember position
+                    case .ended: settle()
                     case .idle: break
                     }
                 }
         }
+        .frame(width: 280)
     }
 
     /// Sprite size grows with age (starts small, tops out after ~a day).
@@ -243,14 +270,6 @@ struct PetRootView: View {
                         .transition(.opacity)
                 }
                 // Dream bubble is shown in its own floating panel (see AppDelegate.showDreamPanel)
-                // Brain thinking indicator (the actual speech bubble is in its own floating panel)
-                if engine.brainThinking && engine.speechBubble == nil {
-                    SpeechBubble(text: "...", thinking: true)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .padding(.top, 6)
-                        .transition(.opacity)
-                        .zIndex(50)
-                }
                 let showControls = engine.controlsPinned
                     || (showMode == "ear" ? engine.earOpen : engine.hover)
                 if showControls {
@@ -1054,6 +1073,19 @@ struct DreamBubble: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 130, height: 130)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.55, green: 0.3, blue: 1.0).opacity(0.9),
+                                            Color(red: 0.25, green: 0.45, blue: 1.0).opacity(0.8),
+                                        ],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 16
+                                )
+                        )
                         .transition(.opacity)
                         .animation(.easeInOut(duration: 0.8), value: image)
                 } else {
