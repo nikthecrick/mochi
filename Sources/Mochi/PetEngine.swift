@@ -916,7 +916,7 @@ final class PetEngine: ObservableObject {
     /// squeezes, a little pile pops out — and shortly after, the file itself
     /// is restored from the Trash ("it pooped the file back out").
     func maybePoop(force: Bool = false) {
-        guard !model.dead, !model.asleep, !poopActive, !jumpActive, pile == nil,
+        guard !model.dead, !model.asleep, !model.deepSleep, !poopActive, !jumpActive, pile == nil,
               !(model.lastEaten ?? []).isEmpty,
               let meal = model.lastMealAt,
               force || (PetRates.digestSetting() > 0
