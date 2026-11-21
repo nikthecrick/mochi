@@ -7,6 +7,21 @@ color, and might just steal your heart. Universal binary — runs natively on Ap
 
 ---
 
+## Download & install
+
+Grab the latest **Mochi.zip** from the [Releases page](../../releases/latest), unzip it, and drag
+**Mochi.app** to your Applications folder — or anywhere you like.
+
+**First launch:** right-click Mochi.app → Open, then click Open in the dialog that appears.
+macOS flags apps that weren't downloaded from the App Store; this clears it once and you're done.
+
+**Optional — browser tab feeding:**
+Mochi can close browser tabs when you drag them onto it. The first time you do this, macOS will
+ask for permission. You can also grant it in advance:
+System Settings → Privacy & Security → Automation → tick the browser(s) under Mochi.
+
+---
+
 ## It begins with an egg
 
 Mochi hatches from a little egg that sits on your desktop. The shell pulses and glimmers while
