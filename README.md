@@ -15,11 +15,6 @@ Grab the latest **Mochi.zip** from the [Releases page](../../releases/latest), u
 **First launch:** right-click Mochi.app → Open, then click Open in the dialog that appears.
 macOS flags apps that weren't downloaded from the App Store; this clears it once and you're done.
 
-**Optional — browser tab feeding:**
-Mochi can close browser tabs when you drag them onto it. The first time you do this, macOS will
-ask for permission. You can also grant it in advance:
-System Settings → Privacy & Security → Automation → tick the browser(s) under Mochi.
-
 ---
 
 ## It begins with an egg
@@ -49,8 +44,6 @@ is closed. Keep them happy and something wonderful might happen.
 
 Drag **any file** onto Mochi — documents, images, music, whatever. Bigger files are tastier.
 Their ears will glow, they'll make a happy face, and the file heads to the Trash.
-
-You can even drag a browser tab straight onto them. It just works.
 
 Meals have consequences. Keep feeding and watch what happens...
 
