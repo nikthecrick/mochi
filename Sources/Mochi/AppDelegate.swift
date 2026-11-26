@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsPanel: PetPanel?
     private var shopPanel: PetPanel?
     private var dreamPanel: PetPanel?
+    private var dreamDelayWork: DispatchWorkItem?
     private var gadgetPanels: [PetPanel] = []
     private let maxGadgets = 3
     private let gadgetLifetime: TimeInterval = 40
@@ -115,9 +116,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] sleeping in
                 guard let self else { return }
                 if sleeping {
-                    self.showDreamPanel()
-                    self.dream.startCycling()
+                    let work = DispatchWorkItem { [weak self] in
+                        guard let self else { return }
+                        self.showDreamPanel()
+                        self.dream.startCycling()
+                    }
+                    self.dreamDelayWork = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
                 } else {
+                    self.dreamDelayWork?.cancel()
+                    self.dreamDelayWork = nil
                     self.hideDreamPanel()
                 }
             }
