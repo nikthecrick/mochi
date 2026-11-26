@@ -292,8 +292,6 @@ enum Sprites {
     }
 
     private static func bedSleep(_ b: Builder, phase: Int) {
-        // Cream pillow background fills top rows so desktop never shows through
-        b.rect(0, 0, 16, 6, "W")
         ear(b, 4, "U", 0); ear(b, 9, "U", 0)
         b.rect(4, 5, 8, 1, "K")
         b.rect(3, 6, 1, 4, "K"); b.rect(12, 6, 1, 4, "K")
