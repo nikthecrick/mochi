@@ -35,6 +35,7 @@ is closed. Keep them happy and something wonderful might happen.
 |---|---|
 | **click** | give a little pat |
 | **hover** | peek at their stats + controls |
+| **click an ear** | toggle the controls (stays visible until you click again) |
 | **drag** | move them anywhere on screen |
 | **right-click** | open the full menu |
 
